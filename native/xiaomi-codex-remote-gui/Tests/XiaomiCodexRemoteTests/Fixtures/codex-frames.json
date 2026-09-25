@@ -1,0 +1,35 @@
+[
+  {
+    "name": "host device status request",
+    "message": "{\"id\":1,\"method\":\"device.status\"}",
+    "channel": 2,
+    "frames": [
+      "0602217b226964223a312c226d6574686f64223a226465766963652e737461747573227d00000000000000000000000000000000000000000000000000000000"
+    ]
+  },
+  {
+    "name": "agent zero press",
+    "message": "{\"m\":\"v.oai.hid\",\"p\":{\"k\":\"AG00\",\"act\":1,\"ag\":0}}\n",
+    "channel": 2,
+    "frames": [
+      "0602327b226d223a22762e6f61692e686964222c2270223a7b226b223a2241473030222c22616374223a312c226167223a307d7d0a0000000000000000000000"
+    ]
+  },
+  {
+    "name": "encoder counterclockwise tick",
+    "message": "{\"m\":\"v.oai.hid\",\"p\":{\"k\":\"ENC_CC\",\"act\":2}}\n",
+    "channel": 2,
+    "frames": [
+      "06022d7b226d223a22762e6f61692e686964222c2270223a7b226b223a22454e435f4343222c22616374223a327d7d0a00000000000000000000000000000000"
+    ]
+  },
+  {
+    "name": "multi frame device status response",
+    "message": "{\"id\":52,\"result\":{\"version\":\"1.0.0\",\"profile_index\":0,\"layer_index\":0,\"battery\":100,\"is_charging\":false}}\n",
+    "channel": 2,
+    "frames": [
+      "06023d7b226964223a35322c22726573756c74223a7b2276657273696f6e223a22312e302e30222c2270726f66696c655f696e646578223a302c226c61796572",
+      "06022e5f696e646578223a302c2262617474657279223a3130302c2269735f6368617267696e67223a66616c73657d7d0a000000000000000000000000000000"
+    ]
+  }
+]

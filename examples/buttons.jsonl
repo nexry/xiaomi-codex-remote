@@ -1,0 +1,9 @@
+{"key":"home","action":"press"}
+{"key":"home","action":"release"}
+{"key":"ok","action":"press"}
+{"key":"ok","action":"release"}
+{"key":"volume_up","action":"press"}
+{"key":"volume_up","action":"repeat"}
+{"key":"volume_up","action":"release"}
+{"key":"voice","action":"press"}
+{"key":"voice","action":"release"}

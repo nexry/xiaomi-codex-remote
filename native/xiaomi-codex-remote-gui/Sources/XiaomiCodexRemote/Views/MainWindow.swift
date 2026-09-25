@@ -1,0 +1,622 @@
+import SwiftUI
+import AVFoundation
+import CoreBluetooth
+
+/// Daily status and controls for the native XiaomiCodexRemote bridge.
+struct MainWindow: View {
+    var state: AppState
+    @State private var selectedPage: Page = .status
+
+    private enum Page: String, CaseIterable, Identifiable {
+        case status, settings, diagnostics
+        var id: Self { self }
+        var title: String {
+            switch self {
+            case .status: return "状态与连接"
+            case .settings: return "偏好设置"
+            case .diagnostics: return "诊断与日志"
+            }
+        }
+        var icon: String {
+            switch self {
+            case .status: return "point.3.connected.trianglepath.dotted"
+            case .settings: return "gearshape"
+            case .diagnostics: return "stethoscope"
+            }
+        }
+    }
+
+    private struct NextStep {
+        let title: String
+        let message: String
+        let button: String?
+        let action: (() -> Void)?
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            sidebar.frame(width: 200)
+            Divider()
+            pageContent.frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(minWidth: 800, idealWidth: 920, minHeight: 560, idealHeight: 640)
+        .onAppear { state.refreshPermissions() }
+    }
+
+    // MARK: - Sidebar
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Xiaomi Codex Remote").font(.title2.weight(.semibold))
+                HStack(spacing: 7) {
+                    Circle().fill(sidebarStatus.color).frame(width: 8, height: 8)
+                    Text(sidebarStatus.label).font(.subheadline)
+                }
+                .foregroundStyle(sidebarStatus.color)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("连接状态：\(sidebarStatus.label)")
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 24)
+            .padding(.bottom, 24)
+
+            ForEach(Page.allCases) { page in
+                Button { selectedPage = page } label: {
+                    HStack(spacing: 11) {
+                        Image(systemName: page.icon).frame(width: 20)
+                        Text(page.title)
+                        Spacer(minLength: 0)
+                        if page != .settings {
+                            Circle().fill(status(for: page).color).frame(width: 7, height: 7)
+                        }
+                    }
+                    .font(.subheadline)
+                    .padding(.horizontal, 12)
+                    .frame(height: 38)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(selectedPage == page ? Color.accentColor : Color.primary)
+                .background(selectedPage == page ? Color.accentColor.opacity(0.12) : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 8))
+                .accessibilityLabel("\(page.title)，\(status(for: page).label)")
+                .accessibilityAddTraits(selectedPage == page ? .isSelected : [])
+                .padding(.horizontal, 10)
+                .padding(.bottom, 3)
+            }
+            Spacer(minLength: 12)
+            Text("关闭窗口后仍在菜单栏运行")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(18)
+        }
+        .frame(maxHeight: .infinity)
+        .background(.regularMaterial)
+    }
+
+    // MARK: - Page Content
+
+    @ViewBuilder
+    private var pageContent: some View {
+        switch selectedPage {
+        case .status:
+            ScrollView {
+                statusPage
+                    .frame(maxWidth: 750, alignment: .leading)
+                    .frame(maxWidth: .infinity)
+                    .padding(28)
+            }
+        case .settings:
+            ScrollView {
+                settingsPage
+                    .frame(maxWidth: 750, alignment: .leading)
+                    .frame(maxWidth: .infinity)
+                    .padding(28)
+            }
+        case .diagnostics:
+            diagnosticsPage
+        }
+    }
+
+    // MARK: - Status Page
+
+    private var statusPage: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            Text("状态与连接").font(.largeTitle.weight(.semibold))
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text(nextStep.title).font(.title3.weight(.semibold))
+                Text(nextStep.message)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let button = nextStep.button, let action = nextStep.action {
+                    Button(button, action: action)
+                        .buttonStyle(.borderedProminent)
+                        .padding(.top, 3)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(20)
+            .background(Color.accentColor.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
+
+            VStack(spacing: 16) {
+                HStack(alignment: .top, spacing: 16) {
+                    remoteCard.frame(maxWidth: .infinity)
+                    chatGPTCard.frame(maxWidth: .infinity)
+                }
+                HStack(alignment: .top, spacing: 16) {
+                    audioCard.frame(maxWidth: .infinity)
+                    bridgeCard.frame(maxWidth: .infinity)
+                }
+            }
+        }
+    }
+
+    // MARK: - Settings Page
+
+    private var settingsPage: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            Text("偏好设置").font(.largeTitle.weight(.semibold))
+
+            VStack(alignment: .leading, spacing: 16) {
+                Text("遥控器与语音").font(.headline)
+
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("音量拦截")
+                        Text("开启后，按遥控器的音量键不会改变 Mac 系统的音量。")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if state.volumeInterceptor.isEnabled {
+                        Label("已启用", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                    } else {
+                        Button("启用") {
+                            state.volumeInterceptor.requestAccessibility()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                                state.volumeInterceptor.start()
+                            }
+                        }
+                    }
+                }
+
+                Divider()
+
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("MiCodexRemote 虚拟声卡")
+                        Text("用于接收遥控器麦克风的声音。")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if state.driverManager.status == .notInstalled || driverInstallFailed {
+                        Button("安装驱动") { state.installDriver() }
+                    } else if state.driverManager.status == .installing {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Text("已安装").foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .padding()
+            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+
+            VStack(alignment: .leading, spacing: 16) {
+                Text("系统与桥接").font(.headline)
+
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("桥接服务")
+                        Text("负责将遥控器信号转换为 ChatGPT 可识别的指令。")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button(state.bridge.state == .running ? "重启服务" : "启动服务") {
+                        if state.bridge.state == .running { state.bridge.restart() }
+                        else { state.bridge.start() }
+                    }
+                }
+
+                Divider()
+
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("ChatGPT")
+                        Text("唤醒或重新打开 ChatGPT 客户端窗口。")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("启动 ChatGPT") {
+                        state.launchChatGPT()
+                    }
+                    .disabled(state.chatGPTLauncher.chatGPTPath == nil)
+                }
+            }
+            .padding()
+            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
+    // MARK: - Diagnostics Page
+
+    private var diagnosticsPage: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("诊断与日志").font(.largeTitle.weight(.semibold))
+                    Text("如果应用工作异常，请检查以下权限或查看底层活动日志。")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    VStack(spacing: 0) {
+                        permissionRow(
+                            icon: "antenna.radiowaves.left.and.right",
+                            title: "蓝牙",
+                            detail: "用于寻找已配对的遥控器并接收语音数据。首次连接时 macOS 会请求授权。",
+                            granted: state.bluetoothAuthorization == .allowedAlways,
+                            status: bluetoothPermissionStatus,
+                            actionTitle: "打开系统设置",
+                            action: state.openBluetoothPrivacySettings
+                        )
+                        Divider().padding(.leading, 54)
+                        permissionRow(
+                            icon: "keyboard",
+                            title: "输入监控",
+                            detail: "接收遥控器按键所必需。允许 Xiaomi Codex Remote 后返回应用重新检测。",
+                            granted: state.inputMonitoringAccess == .granted,
+                            status: inputMonitoringPermissionStatus,
+                            actionTitle: state.inputMonitoringAccess == .unknown ? "请求权限" : "打开系统设置",
+                            action: state.inputMonitoringAccess == .unknown
+                                ? state.requestInputMonitoringPermission : state.openInputMonitoringSettings
+                        )
+                        Divider().padding(.leading, 54)
+                        permissionRow(
+                            icon: "mic",
+                            title: "麦克风",
+                            detail: "应用启动时请求音频权限；遥控器语音仍需蓝牙连接和虚拟音频设备。",
+                            granted: state.microphoneAuthorization == .authorized,
+                            status: microphonePermissionStatus,
+                            actionTitle: state.microphoneAuthorization == .notDetermined ? "请求权限" : "打开系统设置",
+                            action: state.requestMicrophonePermission
+                        )
+                        Divider().padding(.leading, 54)
+                        permissionRow(
+                            icon: "hand.point.up.left",
+                            title: "辅助功能（可选）",
+                            detail: "启用音量拦截时使用，避免遥控器音量键同时改变 Mac 系统音量。",
+                            granted: state.accessibilityGranted,
+                            status: state.accessibilityGranted ? "已允许" : "未允许",
+                            actionTitle: state.accessibilityGranted ? "打开系统设置" : "请求权限",
+                            action: state.accessibilityGranted
+                                ? state.openAccessibilitySettings : state.requestAccessibilityPermission
+                        )
+                    }
+                    .padding(.horizontal, 16)
+                    .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+
+                    Button("重新检测权限状态") { state.refreshAfterReturningToApp() }
+                        .buttonStyle(.bordered)
+                }
+                .padding(28)
+                .frame(maxWidth: 750, alignment: .leading)
+                .frame(maxWidth: .infinity)
+            }
+
+            Divider()
+
+            LogView(lines: state.logLines)
+        }
+    }
+
+    // MARK: - Permission Helpers
+
+    private func permissionRow(
+        icon: String,
+        title: String,
+        detail: String,
+        granted: Bool,
+        status: String,
+        actionTitle: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 36)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.subheadline.weight(.semibold))
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Label(status, systemImage: granted ? "checkmark.circle.fill" : "exclamationmark.circle")
+                .font(.subheadline)
+                .foregroundStyle(granted ? Color.green : Color.orange)
+                .frame(width: 90, alignment: .leading)
+            Button(actionTitle, action: action)
+                .buttonStyle(.bordered)
+                .frame(width: 116)
+        }
+        .padding(.vertical, 14)
+    }
+
+    private var bluetoothPermissionStatus: String {
+        switch state.bluetoothAuthorization {
+        case .allowedAlways: return "已允许"
+        case .denied: return "未允许"
+        case .restricted: return "受限制"
+        case .notDetermined: return "待授权"
+        @unknown default: return "待检测"
+        }
+    }
+
+    private var inputMonitoringPermissionStatus: String {
+        switch state.inputMonitoringAccess {
+        case .granted: return "已允许"
+        case .denied: return "未允许"
+        case .unknown: return "待授权"
+        }
+    }
+
+    private var microphonePermissionStatus: String {
+        switch state.microphoneAuthorization {
+        case .authorized: return "已允许"
+        case .denied: return "未允许"
+        case .restricted: return "受限制"
+        case .notDetermined: return "待授权"
+        @unknown default: return "待检测"
+        }
+    }
+
+    // MARK: - Cards Implementation
+
+    private var remoteCard: some View {
+        StatusCard(
+            icon: "gamecontroller.fill",
+            title: "遥控器",
+            status: remoteStatus,
+            details: remoteDetails,
+            actionLabel: remotePermissionNeeded ? "打开输入监控设置" : "重新检测",
+            action: remoteAction
+        )
+    }
+
+    private var remoteStatus: StatusCard.Status {
+        switch state.hidStatus {
+        case .connected: return .good("已连接")
+        case .permissionRequired: return .warning("需要输入监控权限")
+        case .permissionDenied: return .error("输入监控被拒绝")
+        case .searching: return .inactive("等待遥控器")
+        case .failed(let message): return .error(message)
+        case .stopped: return .inactive("检测已停止")
+        }
+    }
+
+    private var remoteDetails: [String] {
+        var details: [String] = []
+        if remoteConnected {
+            details.append(state.remoteName ?? "已连接的遥控器")
+            if let battery = state.remoteBattery {
+                details.append("电量: \(battery)%")
+            }
+        } else {
+            details.append(remotePermissionNeeded ? "授权后返回应用重新检测" : "等待已配对的遥控器连接")
+        }
+        return details
+    }
+
+    private var audioCard: some View {
+        StatusCard(
+            icon: "mic.fill",
+            title: "音频设备",
+            status: audioStatus,
+            details: audioDetails,
+            actionLabel: audioActionLabel,
+            action: audioAction
+        )
+    }
+
+    private var audioStatus: StatusCard.Status {
+        if state.driverManager.status == .notInstalled {
+            return .error("驱动未安装")
+        } else if state.driverManager.status == .installing {
+            return .warning("正在安装驱动")
+        } else if case .failed(let msg) = state.driverManager.status {
+            return .error("安装失败：\(msg)")
+        } else if state.isVoiceStreaming {
+            return .warning("正在传输")
+        } else if state.audioReady {
+            return .good("设备就绪")
+        } else {
+            return .error(state.audioOutput.selectedDevice == nil ? "未找到音频设备" : "音频设备未运行")
+        }
+    }
+
+    private var audioDetails: [String] {
+        switch state.driverManager.status {
+        case .notInstalled: return ["需要安装 MiCodexRemote 音频驱动"]
+        case .installing: return ["按系统提示完成安装"]
+        case .failed: return ["请重试安装"]
+        case .installed: return [state.audioOutput.selectedDevice?.name ?? "未选择音频设备"]
+        }
+    }
+
+    private var audioActionLabel: String? {
+        switch state.driverManager.status {
+        case .notInstalled, .failed:
+            return "安装驱动"
+        case .installing:
+            return nil
+        case .installed:
+            return state.audioReady ? nil : "重新检测"
+        }
+    }
+
+    private var audioAction: (() -> Void)? {
+        switch state.driverManager.status {
+        case .notInstalled, .failed:
+            return { self.state.installDriver() }
+        case .installing:
+            return nil
+        case .installed:
+            if state.audioReady {
+                return nil
+            } else {
+                return {
+                    self.state.driverManager.refresh()
+                    _ = self.state.audioOutput.configure()
+                    self.state.audioReady = self.state.audioOutput.isReady
+                }
+            }
+        }
+    }
+
+    private var bridgeCard: some View {
+        StatusCard(
+            icon: "cable.connector",
+            title: "桥接服务",
+            status: bridgeStatus,
+            details: bridgeDetails,
+            actionLabel: bridgeActionLabel,
+            action: bridgeAction
+        )
+    }
+
+    private var bridgeStatus: StatusCard.Status {
+        switch state.bridge.state {
+        case .running: return .good("运行中")
+        case .starting: return .warning("启动中")
+        case .failed(let msg): return .error("启动失败: \(msg)")
+        case .stopped: return .inactive("已停止")
+        }
+    }
+
+    private var bridgeDetails: [String] {
+        ["Xiaomi Codex Remote 本机连接服务"]
+    }
+
+    private var bridgeActionLabel: String? {
+        switch state.bridge.state {
+        case .running, .starting: return "重启"
+        case .stopped, .failed: return "启动"
+        }
+    }
+
+    private var bridgeAction: (() -> Void)? {
+        switch state.bridge.state {
+        case .running, .starting:
+            return { state.bridge.restart() }
+        case .stopped, .failed:
+            return { state.bridge.start() }
+        }
+    }
+
+    private var chatGPTCard: some View {
+        StatusCard(
+            icon: "bubble.left.fill",
+            title: "ChatGPT",
+            status: chatGPTStatus,
+            details: chatGPTDetails,
+            actionLabel: state.bridge.state == .running && state.chatGPTLauncher.chatGPTPath != nil ? "启动 ChatGPT" : nil,
+            action: state.bridge.state == .running && state.chatGPTLauncher.chatGPTPath != nil ? { state.launchChatGPT() } : nil
+        )
+    }
+
+    private var chatGPTStatus: StatusCard.Status {
+        if state.bridge.shimConnected {
+            return .good("已连接")
+        } else if state.chatGPTLauncher.isLaunched {
+            return .warning("等待连接")
+        } else {
+            return .inactive("未连接")
+        }
+    }
+
+    private var chatGPTDetails: [String] {
+        guard let path = state.chatGPTLauncher.chatGPTPath else { return ["未找到 ChatGPT.app"] }
+        return [(path as NSString).lastPathComponent]
+    }
+
+    // MARK: - State Properties & Logic
+
+    private var remoteConnected: Bool {
+        if case .connected = state.hidStatus { return true }
+        return false
+    }
+
+    private var remotePermissionNeeded: Bool {
+        state.hidStatus == .permissionRequired || state.hidStatus == .permissionDenied
+    }
+
+    private var remoteAction: () -> Void {
+        if remotePermissionNeeded { return state.openInputMonitoringSettings }
+        return {
+            state.hidMonitor.stop()
+            state.hidMonitor.start()
+        }
+    }
+
+    private var sidebarStatus: StatusCard.Status {
+        if remoteConnected && state.bridge.shimConnected { return .good("按键已连接") }
+        if remotePermissionNeeded { return .error("需要输入监控权限") }
+        if case .failed = state.bridge.state { return .error("桥接服务启动失败") }
+        return .inactive("等待连接")
+    }
+
+    private func status(for page: Page) -> StatusCard.Status {
+        switch page {
+        case .status: return sidebarStatus
+        case .settings: return .inactive("设置")
+        case .diagnostics:
+            return state.bluetoothAuthorization == .allowedAlways &&
+                state.inputMonitoringAccess == .granted &&
+                state.microphoneAuthorization == .authorized
+                ? .good("已授权") : .warning("查看权限")
+        }
+    }
+
+    private var nextStep: NextStep {
+        if remotePermissionNeeded {
+            return NextStep(title: "允许输入监控", message: "Xiaomi Codex Remote 需要这项权限才能接收遥控器按键。",
+                            button: "查看诊断与权限", action: { selectedPage = .diagnostics })
+        }
+        if case .failed = state.hidStatus {
+            return NextStep(title: "重新检测遥控器", message: "按键接收遇到问题，请重新检测。",
+                            button: "重新检测", action: remoteAction)
+        }
+        if !remoteConnected {
+            return NextStep(title: "连接遥控器", message: "等待已配对的遥控器连接；连接后按键状态会自动更新。",
+                            button: nil, action: nil)
+        }
+        if state.bridge.state != .running {
+            return NextStep(title: "启动桥接服务", message: "遥控器已连接，还需要本机桥接服务传送按键。",
+                            button: bridgeActionLabel, action: bridgeAction)
+        }
+        if !state.bridge.shimConnected {
+            return NextStep(title: "连接 ChatGPT", message: "请确保 ChatGPT 应用已启动，桥接服务正在等待连接。",
+                            button: "启动 ChatGPT", action: { state.launchChatGPT() })
+        }
+        if state.driverManager.status == .notInstalled || driverInstallFailed {
+            return NextStep(title: "准备音频设备", message: "安装音频驱动后才能使用遥控器语音。",
+                            button: "前往设置安装", action: { selectedPage = .settings })
+        }
+        if !state.audioReady && state.driverManager.status != .installing {
+            return NextStep(title: "检测音频设备", message: "当前音频设备尚未就绪。",
+                            button: "前往设置检查", action: { selectedPage = .settings })
+        }
+        return NextStep(title: "连接已就绪", message: "遥控器按键、音频设备与 ChatGPT 连接均已畅通。",
+                        button: nil, action: nil)
+    }
+
+    private var driverInstallFailed: Bool {
+        if case .failed = state.driverManager.status { return true }
+        return false
+    }
+}

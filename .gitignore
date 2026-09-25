@@ -1,0 +1,28 @@
+# Node.js
+node_modules/
+
+# Swift Package Manager and Xcode build products
+**/.build/
+**/.swiftpm/
+**/*.dSYM/
+**/*.o
+DerivedData/
+
+# Generated application bundles
+native/xiaomi-codex-remote-gui/Xiaomi Codex Remote.app/
+
+# Audio driver build artifacts
+native/XiaomiCodexRemoteAudio/.build/
+native/XiaomiCodexRemoteAudio/MiCodexRemote2ch.driver/
+
+# Compiled native helpers and caches
+native/CodexMicroVirtualHID/CodexMicroVirtualHID
+
+# Runtime and OS files
+*.log
+.DS_Store
+
+# Local environment files
+.env
+.env.*
+!.env.example

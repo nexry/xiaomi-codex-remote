@@ -1,0 +1,43 @@
+{
+  "name": "xiaomi-codex-remote",
+  "version": "0.1.0",
+  "description": "Xiaomi RC003 button bridge using the existing Codex Micro emulator and node-hid shim.",
+  "type": "module",
+  "bin": {
+    "codex-micro-emulator": "bin/codex-micro-emulator.js",
+    "xiaomi-codex-remote": "bin/xiaomi-codex-remote.js"
+  },
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "test": "node --test",
+    "start": "node bin/xiaomi-codex-remote.js",
+    "build:native": "bash native/CodexMicroVirtualHID/build.sh",
+    "build:gui": "bash native/xiaomi-codex-remote-gui/build.sh",
+    "build:audio": "bash native/XiaomiCodexRemoteAudio/build.sh",
+    "start:xiaomi": "node bin/xiaomi-codex-remote.js --input xiaomi --mode shim",
+    "check": "node scripts/check.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "@elgato-stream-deck/node": "^7.1.0",
+    "sharp": "^0.33.0",
+    "lucide-static": "^0.460.0"
+  },
+  "keywords": [
+    "codex",
+    "codex-micro",
+    "stream-deck",
+    "elgato",
+    "hid",
+    "virtual-hid",
+    "work-louder",
+    "chatgpt",
+    "xiaomi",
+    "rc003"
+  ],
+  "license": "MIT"
+}
