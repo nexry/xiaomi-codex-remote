@@ -7,7 +7,7 @@ export const DEFAULT_MAPPING = Object.freeze(Object.fromEntries(Object.entries({
   back: { kind: "key", keycode: "ACT08" },
   ok: { kind: "key", keycode: Keys.ENCODER_CLICK },
   voice: { kind: "key", keycode: "ACT10" },
-  // Match the existing encoder convention for increasing reasoning depth.
+  // Match upstream Stream Deck's reasoning-up direction (ENC_CC).
   volume_up: { kind: "rotate", keycode: Keys.ENCODER_CCW },
   volume_down: { kind: "rotate", keycode: Keys.ENCODER_CW },
   up: { kind: "joystick", angle: 0.75 },

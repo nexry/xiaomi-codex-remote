@@ -18,8 +18,8 @@ Xiaomi Codex Remote 是一个面向 macOS 的开源实验项目，用于把小�
 | 能力 | 状态 | 说明 |
 | --- | --- | --- |
 | JSONL 模拟按键 | 可用 | 无需遥控器，适合开发和协议回归测试 |
-| Codex Micro 协议与 shim | 已实现 | 宿主应用版本变化可能影响兼容性 |
-| macOS 原生 GUI | 已实现 | 源码构建需要 macOS 14+ 与 Xcode |
+| Codex Micro 协议与 shim | 已实现 | 使用受管理的 ChatGPT 兼容副本；宿主升级后需要更新副本 |
+| macOS 原生 GUI | 已实现 | 包含兼容副本准备、修复、版本检查和真实 shim 连接状态 |
 | RC003 按键输入 | 待持续真机验证 | 仅按捕获数据实现，不推断未知 HID/BLE 字段 |
 | RC003 语音与虚拟音频 | 实验性 | 仍需针对设备、系统权限和音频设备完整验收 |
 
@@ -118,21 +118,39 @@ CLI 可通过 `--xiaomi-config` 加载 [config/xiaomi.example.json](config/xiaom
 
 ## 与桌面宿主应用连接
 
-GUI 中的“启动 ChatGPT”操作会由用户主动触发，并使用 `NODE_OPTIONS` 预加载 `shim/preload.cjs`。这会退出并重新打开已有 ChatGPT 进程，但不会修改应用包中的文件。
+官方 ChatGPT 的 Electron fuse 默认不接受 `NODE_OPTIONS`。GUI 通过明确的用户操作，在 `~/Applications/ChatGPT-Patched.app` 创建受管理的兼容副本；官方 `/Applications/ChatGPT.app` 保持只读。
 
-也可以在桥接服务已运行时手动执行：
+首次使用流程：
+
+1. 正常退出 ChatGPT；
+2. 在 GUI 中点击“准备 ChatGPT 兼容副本”；
+3. GUI 原生完成复制、NodeOptions fuse 修改、内置 shim、启动环境、本地签名和验证，不需要 Node.js 或终端；
+4. 点击“打开 ChatGPT Shim”。只有本地 socket 实际连接后，界面才显示“已注入并连接”；
+5. 使用“在 Finder 中显示”可将显示名为 `ChatGPT Shim` 的兼容副本拖入 Dock。以后从 Dock 启动也会加载 shim，但 Xiaomi Codex Remote 需要保持运行。
+
+GUI 会比较官方应用与兼容副本的 `CFBundleVersion`：
+
+- 没有兼容副本：显示“需要准备”；
+- 官方版本变化：显示“需要更新兼容副本”；
+- fuse、内置 shim、启动环境、签名或签名权限不符合要求：显示“需要修复”。
+
+兼容副本使用本地 ad-hoc 签名。OpenAI 团队专属的 application groups、推送和 keychain 权限不能保留，否则 macOS AMFI 会拒绝启动；因此首次打开兼容副本时可能需要重新登录或重新授予系统权限。
+
+开发者可以使用回退脚本复现同一流程：
 
 ```bash
-bash shim/launch-chatgpt.sh
+bash shim/patch-app.sh
+CHATGPT_APP="$HOME/Applications/ChatGPT-Patched.app" bash shim/launch-chatgpt.sh
 ```
 
 可选环境变量：
 
-- `CHATGPT_APP`：宿主应用路径，默认 `/Applications/ChatGPT.app`；
-- `CODEX_MICRO_SOCKET`：Unix socket 路径；
+- `CHATGPT_APP`：源应用或启动目标路径；
+- `CHATGPT_SHIM_APP`：兼容副本路径，默认 `~/Applications/ChatGPT-Patched.app`；
+- `CODEX_MICRO_SOCKET`：Unix socket 路径，GUI 默认使用 `/tmp/xiaomi-codex-remote-<uid>.sock`；
 - `CODEX_MICRO_SHIM_LOG`：shim 日志路径。
 
-该集成依赖宿主应用的内部运行环境，升级后可能失效。请在使用前自行评估风险，并仅在本地测试环境中启用。
+该集成依赖宿主应用的内部运行环境。自动化测试不能替代具体 ChatGPT 版本的人工兼容性验证。
 
 ## 测试与检查
 
@@ -160,7 +178,7 @@ examples/                            JSONL 模拟输入
 native/xiaomi-codex-remote-gui/      SwiftUI macOS 应用
 native/XiaomiCodexRemoteAudio/       实验性虚拟音频驱动脚本
 native/CodexMicroVirtualHID/          可选原生虚拟 HID helper
-shim/                                桌面宿主的 node-hid shim
+shim/                                node-hid shim、兼容副本脚本与开发启动脚本
 src/xiaomi/                          RC003 映射、输入和音频协议代码
 src/transports/                      本地传输层
 test/                                JavaScript 自动化测试与 fixture

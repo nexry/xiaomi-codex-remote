@@ -1,4 +1,4 @@
-// Syntax validation without adding a lint dependency.
+// Syntax validation without a new lint dependency; upstream has no linter.
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";

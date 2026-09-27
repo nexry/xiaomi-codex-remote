@@ -1,6 +1,6 @@
 {
   "name": "xiaomi-codex-remote",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Xiaomi RC003 button bridge using the existing Codex Micro emulator and node-hid shim.",
   "type": "module",
   "bin": {
@@ -11,7 +11,7 @@
     ".": "./src/index.js"
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test test/*.test.mjs",
     "start": "node bin/xiaomi-codex-remote.js",
     "build:native": "bash native/CodexMicroVirtualHID/build.sh",
     "build:gui": "bash native/xiaomi-codex-remote-gui/build.sh",

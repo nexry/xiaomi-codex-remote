@@ -109,6 +109,12 @@ final class AppState {
         bridge.onLogLine = { [weak self] text in
             self?.appendLog(source: "bridge", text: text)
         }
+        bridge.onShimConnectionChange = { [weak self] connected in
+            self?.chatGPTLauncher.shimConnectionChanged(connected)
+            if connected {
+                self?.appendLog(source: "chatgpt", text: "ChatGPT Shim 已连接，兼容副本注入成功")
+            }
+        }
     }
 
     // MARK: - Audio Permission
@@ -188,6 +194,7 @@ final class AppState {
 
     func refreshAfterReturningToApp() {
         refreshPermissions()
+        chatGPTLauncher.refreshCompatibility()
         if inputMonitoringAccess != .granted && hidMonitor.isMonitoring {
             hidMonitor.stop()
         }
@@ -211,6 +218,7 @@ final class AppState {
 
     func startAll() {
         bridge.start()
+        chatGPTLauncher.refreshCompatibility()
         volumeInterceptor.start()
         hidMonitor.start()
 
@@ -241,20 +249,36 @@ final class AppState {
             appendLog(source: "chatgpt", text: "请先启动桥接服务")
             return
         }
+        guard case .ready = chatGPTLauncher.compatibilityState else {
+            appendLog(source: "chatgpt", text: "请先准备或修复 ChatGPT 兼容副本")
+            return
+        }
         appendLog(source: "chatgpt", text: "正在启动 ChatGPT...")
-        DispatchQueue.global().async { [weak self] in
-            guard let self else { return }
-            let ok = self.chatGPTLauncher.launch(
-                socketPath: self.bridge.socketPath
-            )
-            DispatchQueue.main.async {
-                if ok {
-                    self.appendLog(source: "chatgpt", text: "ChatGPT 已启动 (shim 已注入)")
-                } else {
-                    self.appendLog(source: "chatgpt", text: "ChatGPT 启动失败")
-                }
+        chatGPTLauncher.launch(socketPath: bridge.socketPath) { [weak self] result in
+            switch result {
+            case .success:
+                self?.appendLog(source: "chatgpt", text: "ChatGPT 已打开，正在等待 Shim 连接")
+            case let .failure(error):
+                self?.appendLog(source: "chatgpt", text: "ChatGPT 启动失败：\(error.localizedDescription)")
             }
         }
+    }
+
+    func prepareChatGPTCompatibility() {
+        appendLog(source: "chatgpt", text: "正在准备 ChatGPT 兼容副本，这可能需要一些时间...")
+        chatGPTLauncher.prepareCompatibility { [weak self] result in
+            switch result {
+            case .success:
+                self?.appendLog(source: "chatgpt", text: "ChatGPT 兼容副本已准备完成")
+            case let .failure(error):
+                self?.appendLog(source: "chatgpt", text: "兼容副本准备失败：\(error.localizedDescription)")
+            }
+        }
+    }
+
+    func revealChatGPTDockEntry() {
+        chatGPTLauncher.revealDockEntry()
+        appendLog(source: "chatgpt", text: "已在 Finder 中显示 ChatGPT Shim，可将它拖到 Dock")
     }
 
     func installDriver() {

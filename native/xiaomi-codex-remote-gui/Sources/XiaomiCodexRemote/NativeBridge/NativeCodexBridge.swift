@@ -9,12 +9,13 @@ final class NativeCodexBridge {
     private(set) var shimConnected = false
     let socketPath: String
     var onLogLine: ((String) -> Void)?
+    var onShimConnectionChange: ((Bool) -> Void)?
     @ObservationIgnored private let server: CodexSocketServer
     @ObservationIgnored private let emulator = CodexEmulator()
     @ObservationIgnored private lazy var router = XiaomiInputRouter(emulator: emulator)
     @ObservationIgnored private var reassembler = CodexFrameReassembler()
 
-    init(socketPath: String = NSTemporaryDirectory() + "codex-micro-vhid.sock") {
+    init(socketPath: String = ChatGPTShimConfiguration.socketPath) {
         self.socketPath = socketPath
         server = CodexSocketServer(path: socketPath)
         server.onFrame = { [weak self] frame in self?.receive(frame) }
@@ -23,6 +24,7 @@ final class NativeCodexBridge {
             self.shimConnected = connected
             self.reassembler = CodexFrameReassembler()
             if !connected { self.router.releaseAll() }
+            self.onShimConnectionChange?(connected)
             self.onLogLine?(connected ? "Shim 已连接" : "Shim 已断开")
         }
         server.onError = { [weak self] error in

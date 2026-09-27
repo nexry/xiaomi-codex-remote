@@ -98,7 +98,7 @@ final class XiaomiCodexRemoteAppDelegate: NSObject, NSApplicationDelegate {
         restartItem.target = self
         menu.addItem(restartItem)
 
-        let launchItem = NSMenuItem(title: "启动 ChatGPT", action: #selector(launchChatGPT), keyEquivalent: "")
+        let launchItem = NSMenuItem(title: "打开 ChatGPT Shim", action: #selector(launchChatGPT), keyEquivalent: "")
         launchItem.target = self
         menu.addItem(launchItem)
 

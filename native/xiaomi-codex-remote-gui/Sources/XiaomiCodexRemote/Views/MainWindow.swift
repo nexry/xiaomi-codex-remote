@@ -224,15 +224,22 @@ struct MainWindow: View {
 
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("ChatGPT")
-                        Text("唤醒或重新打开 ChatGPT 客户端窗口。")
+                        Text("ChatGPT Shim")
+                        Text(chatGPTCompatibilityDescription)
                             .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer()
-                    Button("启动 ChatGPT") {
-                        state.launchChatGPT()
+                    if state.chatGPTLauncher.compatibilityState == .preparing {
+                        ProgressView().controlSize(.small)
+                    } else if case .ready = state.chatGPTLauncher.compatibilityState {
+                        HStack {
+                            Button("在 Finder 中显示") { state.revealChatGPTDockEntry() }
+                            Button("打开") { state.launchChatGPT() }
+                        }
+                    } else if let label = chatGPTCompatibilityActionLabel {
+                        Button(label) { state.prepareChatGPTCompatibility() }
                     }
-                    .disabled(state.chatGPTLauncher.chatGPTPath == nil)
                 }
             }
             .padding()
@@ -521,27 +528,83 @@ struct MainWindow: View {
     private var chatGPTCard: some View {
         StatusCard(
             icon: "bubble.left.fill",
-            title: "ChatGPT",
+            title: "ChatGPT Shim",
             status: chatGPTStatus,
             details: chatGPTDetails,
-            actionLabel: state.bridge.state == .running && state.chatGPTLauncher.chatGPTPath != nil ? "启动 ChatGPT" : nil,
-            action: state.bridge.state == .running && state.chatGPTLauncher.chatGPTPath != nil ? { state.launchChatGPT() } : nil
+            actionLabel: chatGPTCardActionLabel,
+            action: chatGPTCardAction
         )
     }
 
     private var chatGPTStatus: StatusCard.Status {
-        if state.bridge.shimConnected {
-            return .good("已连接")
-        } else if state.chatGPTLauncher.isLaunched {
-            return .warning("等待连接")
-        } else {
-            return .inactive("未连接")
+        switch state.chatGPTLauncher.compatibilityState {
+        case .checking: return .inactive("正在检查")
+        case .sourceMissing: return .error("未找到官方应用")
+        case .needsPreparation: return .warning("需要准备")
+        case .needsUpdate: return .warning("需要更新兼容副本")
+        case .needsRepair: return .warning("需要修复")
+        case .preparing: return .warning("正在准备")
+        case let .failed(message): return .error(message)
+        case .ready:
+            switch state.chatGPTLauncher.launchState {
+            case .connected: return .good("已注入并连接")
+            case .launching: return .warning("正在打开")
+            case .waitingForShim: return .warning("等待 Shim 连接")
+            case let .failed(message): return .error(message)
+            case .idle: return .inactive("兼容副本已就绪")
+            }
         }
     }
 
     private var chatGPTDetails: [String] {
-        guard let path = state.chatGPTLauncher.chatGPTPath else { return ["未找到 ChatGPT.app"] }
-        return [(path as NSString).lastPathComponent]
+        switch state.chatGPTLauncher.compatibilityState {
+        case let .ready(version):
+            return ["ChatGPT Shim · \(version)", "可在 Finder 中拖入 Dock"]
+        case let .needsUpdate(installed, source):
+            return ["兼容副本 \(installed)", "官方版本 \(source)"]
+        case let .needsRepair(reason): return [reason]
+        case let .needsPreparation(version): return ["官方版本 \(version)"]
+        case .sourceMissing: return ["请先安装官方 ChatGPT.app"]
+        case .preparing: return ["正在复制、配置并验证应用"]
+        case let .failed(message): return [message]
+        case .checking: return ["正在检查版本、fuse 与签名"]
+        }
+    }
+
+    private var chatGPTCompatibilityDescription: String {
+        switch state.chatGPTLauncher.compatibilityState {
+        case .checking: return "正在检查官方应用与兼容副本。"
+        case .sourceMissing: return "未找到官方 ChatGPT.app。"
+        case .needsPreparation: return "创建一次兼容副本后，可把 ChatGPT Shim 拖到 Dock 日常使用。"
+        case .needsUpdate: return "官方 ChatGPT 已更新，需要同步更新兼容副本。"
+        case .needsRepair: return "兼容副本的 shim、fuse、启动环境或签名需要修复。"
+        case .preparing: return "正在复制、配置并验证兼容副本，请稍候。"
+        case .ready: return "兼容副本位于“应用程序”目录；显示后可将它拖到 Dock。"
+        case let .failed(message): return message
+        }
+    }
+
+    private var chatGPTCompatibilityActionLabel: String? {
+        switch state.chatGPTLauncher.compatibilityState {
+        case .needsPreparation: return "准备兼容副本"
+        case .needsUpdate: return "更新兼容副本"
+        case .needsRepair, .failed: return "修复兼容副本"
+        default: return nil
+        }
+    }
+
+    private var chatGPTCardActionLabel: String? {
+        if let label = chatGPTCompatibilityActionLabel { return label }
+        guard case .ready = state.chatGPTLauncher.compatibilityState,
+              state.bridge.state == .running else { return nil }
+        return "打开 ChatGPT Shim"
+    }
+
+    private var chatGPTCardAction: (() -> Void)? {
+        if chatGPTCompatibilityActionLabel != nil { return { state.prepareChatGPTCompatibility() } }
+        guard case .ready = state.chatGPTLauncher.compatibilityState,
+              state.bridge.state == .running else { return nil }
+        return { state.launchChatGPT() }
     }
 
     // MARK: - State Properties & Logic
@@ -591,6 +654,25 @@ struct MainWindow: View {
             return NextStep(title: "重新检测遥控器", message: "按键接收遇到问题，请重新检测。",
                             button: "重新检测", action: remoteAction)
         }
+        switch state.chatGPTLauncher.compatibilityState {
+        case .sourceMissing:
+            return NextStep(title: "安装 ChatGPT", message: "需要先安装官方 ChatGPT.app，才能创建兼容副本。",
+                            button: nil, action: nil)
+        case .needsPreparation:
+            return NextStep(title: "准备 ChatGPT 兼容副本", message: "应用会在“应用程序”目录创建 ChatGPT Shim，并完成 fuse、shim 和签名配置。",
+                            button: "准备兼容副本", action: { state.prepareChatGPTCompatibility() })
+        case .needsUpdate:
+            return NextStep(title: "更新 ChatGPT 兼容副本", message: "官方 ChatGPT 已更新，请同步兼容副本后继续使用。",
+                            button: "更新兼容副本", action: { state.prepareChatGPTCompatibility() })
+        case .needsRepair, .failed:
+            return NextStep(title: "修复 ChatGPT 兼容副本", message: chatGPTCompatibilityDescription,
+                            button: "修复兼容副本", action: { state.prepareChatGPTCompatibility() })
+        case .preparing:
+            return NextStep(title: "正在准备兼容副本", message: "正在复制、配置并验证 ChatGPT，请保持 Xiaomi Codex Remote 运行。",
+                            button: nil, action: nil)
+        case .checking, .ready:
+            break
+        }
         if !remoteConnected {
             return NextStep(title: "连接遥控器", message: "等待已配对的遥控器连接；连接后按键状态会自动更新。",
                             button: nil, action: nil)
@@ -600,8 +682,8 @@ struct MainWindow: View {
                             button: bridgeActionLabel, action: bridgeAction)
         }
         if !state.bridge.shimConnected {
-            return NextStep(title: "连接 ChatGPT", message: "请确保 ChatGPT 应用已启动，桥接服务正在等待连接。",
-                            button: "启动 ChatGPT", action: { state.launchChatGPT() })
+            return NextStep(title: "连接 ChatGPT", message: "打开 ChatGPT Shim；连接成功后才会显示为已注入。",
+                            button: "打开 ChatGPT Shim", action: { state.launchChatGPT() })
         }
         if state.driverManager.status == .notInstalled || driverInstallFailed {
             return NextStep(title: "准备音频设备", message: "安装音频驱动后才能使用遥控器语音。",

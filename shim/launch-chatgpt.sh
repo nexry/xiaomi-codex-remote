@@ -27,7 +27,7 @@ if [ -z "$BIN_NAME" ] || [ ! -x "$APP/Contents/MacOS/$BIN_NAME" ]; then
 fi
 BIN="$APP/Contents/MacOS/$BIN_NAME"
 
-SOCK="${CODEX_MICRO_SOCKET:-${TMPDIR:-/tmp/}codex-micro-vhid.sock}"
+SOCK="${CODEX_MICRO_SOCKET:-/tmp/xiaomi-codex-remote-$(id -u).sock}"
 
 export NODE_OPTIONS="--require $DIR/shim/preload.cjs"
 export CODEX_MICRO_SOCKET="$SOCK"
