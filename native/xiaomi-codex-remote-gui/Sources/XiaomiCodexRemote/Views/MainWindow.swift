@@ -6,22 +6,25 @@ import CoreBluetooth
 struct MainWindow: View {
     var state: AppState
     @State private var selectedPage: Page = .status
+    @AppStorage(AppPreferences.hideDockIconKey) private var hideDockIcon = false
 
     private enum Page: String, CaseIterable, Identifiable {
-        case status, settings, diagnostics
+        case status, settings, permissions, logs
         var id: Self { self }
         var title: String {
             switch self {
             case .status: return "状态与连接"
             case .settings: return "偏好设置"
-            case .diagnostics: return "诊断与日志"
+            case .permissions: return "权限"
+            case .logs: return "日志"
             }
         }
         var icon: String {
             switch self {
             case .status: return "point.3.connected.trianglepath.dotted"
             case .settings: return "gearshape"
-            case .diagnostics: return "stethoscope"
+            case .permissions: return "lock.shield"
+            case .logs: return "stethoscope"
             }
         }
     }
@@ -115,8 +118,15 @@ struct MainWindow: View {
                     .frame(maxWidth: .infinity)
                     .padding(28)
             }
-        case .diagnostics:
-            diagnosticsPage
+        case .permissions:
+            ScrollView {
+                permissionsPage
+                    .frame(maxWidth: 750, alignment: .leading)
+                    .frame(maxWidth: .infinity)
+                    .padding(28)
+            }
+        case .logs:
+            logsPage
         }
     }
 
@@ -160,6 +170,27 @@ struct MainWindow: View {
     private var settingsPage: some View {
         VStack(alignment: .leading, spacing: 24) {
             Text("偏好设置").font(.largeTitle.weight(.semibold))
+
+            VStack(alignment: .leading, spacing: 16) {
+                Text("通用").font(.headline)
+
+                Toggle(isOn: $hideDockIcon) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("隐藏 Dock 图标")
+                        Text("隐藏后仍可通过菜单栏图标打开应用。")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .toggleStyle(.switch)
+                .onChange(of: hideDockIcon) { _, hidden in
+                    AppPreferences.applyDockIconVisibility(
+                        hidden: hidden,
+                        activateWhenVisible: true
+                    )
+                }
+            }
+            .padding()
+            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
 
             VStack(alignment: .leading, spacing: 16) {
                 Text("遥控器与语音").font(.headline)
@@ -247,19 +278,17 @@ struct MainWindow: View {
         }
     }
 
-    // MARK: - Diagnostics Page
+    // MARK: - Permissions Page
 
-    private var diagnosticsPage: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    Text("诊断与日志").font(.largeTitle.weight(.semibold))
-                    Text("如果应用工作异常，请检查以下权限或查看底层活动日志。")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+    private var permissionsPage: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("权限").font(.largeTitle.weight(.semibold))
+            Text("检查应用正常工作所需的系统权限，并在授权后重新检测状态。")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
-                    VStack(spacing: 0) {
+            VStack(spacing: 0) {
                         permissionRow(
                             icon: "antenna.radiowaves.left.and.right",
                             title: "蓝牙",
@@ -301,17 +330,26 @@ struct MainWindow: View {
                             action: state.accessibilityGranted
                                 ? state.openAccessibilitySettings : state.requestAccessibilityPermission
                         )
-                    }
-                    .padding(.horizontal, 16)
-                    .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
-
-                    Button("重新检测权限状态") { state.refreshAfterReturningToApp() }
-                        .buttonStyle(.bordered)
-                }
-                .padding(28)
-                .frame(maxWidth: 750, alignment: .leading)
-                .frame(maxWidth: .infinity)
             }
+            .padding(.horizontal, 16)
+            .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+
+            Button("重新检测权限状态") { state.refreshAfterReturningToApp() }
+                .buttonStyle(.bordered)
+        }
+    }
+
+    // MARK: - Logs Page
+
+    private var logsPage: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("日志").font(.largeTitle.weight(.semibold))
+                Text("查看连接、按键、语音和 ChatGPT 桥接的诊断与活动日志。")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(28)
 
             Divider()
 
@@ -637,18 +675,19 @@ struct MainWindow: View {
         switch page {
         case .status: return sidebarStatus
         case .settings: return .inactive("设置")
-        case .diagnostics:
+        case .permissions:
             return state.bluetoothAuthorization == .allowedAlways &&
                 state.inputMonitoringAccess == .granted &&
                 state.microphoneAuthorization == .authorized
                 ? .good("已授权") : .warning("查看权限")
+        case .logs: return .inactive("活动日志")
         }
     }
 
     private var nextStep: NextStep {
         if remotePermissionNeeded {
             return NextStep(title: "允许输入监控", message: "Xiaomi Codex Remote 需要这项权限才能接收遥控器按键。",
-                            button: "查看诊断与权限", action: { selectedPage = .diagnostics })
+                            button: "查看权限", action: { selectedPage = .permissions })
         }
         if case .failed = state.hidStatus {
             return NextStep(title: "重新检测遥控器", message: "按键接收遇到问题，请重新检测。",

@@ -178,6 +178,6 @@ if CommandLine.arguments.contains("--check-runtime") {
     let app = NSApplication.shared
     let delegate = XiaomiCodexRemoteAppDelegate()
     app.delegate = delegate
-    app.setActivationPolicy(.regular) // Show in dock (has a window now)
+    AppPreferences.applyDockIconVisibility(hidden: AppPreferences.hideDockIcon())
     app.run()
 }
