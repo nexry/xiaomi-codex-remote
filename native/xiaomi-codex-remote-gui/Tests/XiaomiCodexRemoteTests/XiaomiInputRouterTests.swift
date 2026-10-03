@@ -2,7 +2,63 @@ import XCTest
 @testable import XiaomiCodexRemote
 
 final class XiaomiInputRouterTests: XCTestCase {
-    func testOKDefaultsToSubmitWithPressAndRelease() {
+    func testEditorTitlesAndBindingDescriptions() {
+        XCTAssertEqual(KeyMappingPage.remoteButtonTitle("up"), "上方向键")
+        XCTAssertEqual(KeyMappingPage.remoteButtonTitle("back"), "返回键")
+        XCTAssertEqual(KeyMappingPage.remoteButtonTitle("voice"), "语音键")
+        XCTAssertEqual(KeyMappingPage.currentBindingDescription(XiaomiKeyMapping.defaults["back"]!), "对应按键：Codex Micro ACT08 键位")
+        XCTAssertEqual(KeyMappingPage.currentBindingDescription(XiaomiKeyMapping.defaults["volume_up"]!), "对应按键：Codex Micro ENC_CC 逆时针旋钮")
+        XCTAssertEqual(KeyMappingPage.currentBindingDescription(XiaomiKeyMapping.defaults["up"]!), "对应按键：Codex Micro JOY_UP 摇杆上")
+        XCTAssertEqual(KeyMappingPage.currentBindingDescription(nil), "对应按键：未设置")
+    }
+    func testFirstEditorSessionStartsWithSavedBindingAndNoChanges() {
+        let original = XiaomiKeyMapping.defaults["ok"]!
+        let session = BindingEditorSession(id: "ok", binding: original)
+        XCTAssertEqual(session.id, "ok")
+        XCTAssertEqual(session.originalBinding, original)
+        XCTAssertEqual(session.binding, original)
+        XCTAssertFalse(session.hasChanges)
+        XCTAssertFalse(session.isVoiceLocked)
+        XCTAssertNil(session.pendingBinding)
+
+        // The sheet receives this object directly, not a parent's optional state.
+        let sheetSession = session
+        sheetSession.binding = nil
+        XCTAssertNil(session.binding)
+        XCTAssertTrue(session.hasChanges)
+        XCTAssertEqual(session.originalBinding, original)
+        session.binding = original
+        XCTAssertFalse(session.hasChanges)
+    }
+
+    func testEditorSessionsDoNotReuseDraftOrPendingBinding() {
+        let first = BindingEditorSession(id: "ok", binding: XiaomiKeyMapping.defaults["ok"]!)
+        first.binding = nil
+        first.pendingBinding = XiaomiKeyMapping.voiceBinding
+        let second = BindingEditorSession(id: "home", binding: XiaomiKeyMapping.defaults["home"]!)
+        XCTAssertEqual(second.binding?.keycode, "AG00")
+        XCTAssertFalse(second.hasChanges)
+        XCTAssertNil(second.pendingBinding)
+
+        let unbound = BindingEditorSession(id: "tv", binding: nil)
+        XCTAssertNil(unbound.binding)
+        XCTAssertFalse(unbound.hasChanges)
+        let voice = BindingEditorSession(id: "voice", binding: XiaomiKeyMapping.voiceBinding)
+        XCTAssertTrue(voice.isVoiceLocked)
+        XCTAssertEqual(voice.binding?.keycode, "ACT10")
+        XCTAssertFalse(voice.hasChanges)
+    }
+
+    func testBindingLabelsUseKeyIdentifiersRatherThanHostActions() {
+        for code in ["AG00", "ACT06", "ACT07", "ACT08", "ACT09", "ACT10", "ACT11", "ACT12", "ENC_CC", "ENC_CW", "ENC_CLK"] {
+            let kind: XiaomiBindingKind = ["ENC_CC", "ENC_CW"].contains(code) ? .rotate : .key
+            XCTAssertEqual(KeyMappingPage.bindingLabel(.init(kind: kind, keycode: code, agent: code == "AG00" ? 0 : nil, angle: nil)), code)
+        }
+        XCTAssertEqual(KeyMappingPage.bindingLabel(nil), "未绑定")
+        XCTAssertEqual(KeyMappingPage.bindingLabel(.init(kind: .joystick, keycode: nil, agent: nil, angle: 0.75)), "摇杆上")
+    }
+
+    func testOKDefaultsToACT12WithPressAndRelease() {
         let emulator = CodexEmulator()
         var sent: [CodexJSON] = []
         emulator.onSend = { sent.append($0) }

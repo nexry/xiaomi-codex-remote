@@ -1,12 +1,29 @@
 import AppKit
 import Foundation
 
+enum RemoteLaunchPreparation {
+    static func run(stopHost: () throws -> Void,
+                    inspect: () -> ChatGPTCompatibilityState,
+                    prepare: () throws -> Void) throws {
+        if case .sourceMissing = inspect() {
+            throw ChatGPTCompatibilityError.invalidSource("请先安装官方 ChatGPT，再使用遥控版。")
+        }
+        try stopHost()
+        if case .ready = inspect() { return }
+        try prepare()
+        guard case .ready = inspect() else {
+            throw ChatGPTCompatibilityError.verificationFailed("遥控支持尚未就绪，请查看设置。")
+        }
+    }
+}
+
 /// Owns the user-visible compatibility state and launches the managed ChatGPT
 /// copy. Preparation and launch are always initiated by an explicit user action.
 @Observable
 final class ChatGPTLauncher {
     private(set) var compatibilityState: ChatGPTCompatibilityState = .checking
     private(set) var launchState: ChatGPTLaunchState = .idle
+    private(set) var powerLaunchInProgress = false
     let compatibilityManager: ChatGPTCompatibilityManager
 
     var chatGPTPath: String? {
@@ -49,6 +66,7 @@ final class ChatGPTLauncher {
     }
 
     func prepareCompatibility(completion: @escaping (Result<Void, Error>) -> Void) {
+        guard !powerLaunchInProgress else { return }
         guard compatibilityState != .preparing else { return }
         compatibilityState = .preparing
         let manager = compatibilityManager
@@ -77,9 +95,9 @@ final class ChatGPTLauncher {
         compatibilityManager.revealDockEntry()
     }
 
-    func launch(socketPath: String, completion: @escaping (Result<Void, Error>) -> Void) {
+    func launch(socketPath: String, stopExistingHost: Bool = true, completion: @escaping (Result<Void, Error>) -> Void) {
         guard case .ready = compatibilityState else {
-            completion(.failure(ChatGPTCompatibilityError.verificationFailed("请先准备或修复 ChatGPT 兼容副本")))
+            completion(.failure(ChatGPTCompatibilityError.verificationFailed("请先准备或修复遥控支持")))
             return
         }
         if launchState == .connected,
@@ -95,7 +113,7 @@ final class ChatGPTLauncher {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result: Result<Void, Error>
             do {
-                try Self.stopRunningChatGPT()
+                if stopExistingHost { try Self.stopRunningChatGPT() }
                 try Self.launchApp(at: appURL, socketPath: socketPath)
                 result = .success(())
             } catch {
@@ -115,18 +133,61 @@ final class ChatGPTLauncher {
         }
     }
 
+    func launchFromPower(socketPath: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard !powerLaunchInProgress, compatibilityState != .preparing,
+              launchState != .launching, launchState != .waitingForShim else { return }
+        if launchState == .connected {
+            launch(socketPath: socketPath, completion: completion)
+            return
+        }
+        powerLaunchInProgress = true
+        compatibilityState = .preparing
+        let manager = compatibilityManager
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            do {
+                try RemoteLaunchPreparation.run(
+                    stopHost: Self.stopRunningChatGPT,
+                    inspect: manager.inspect,
+                    prepare: manager.prepare
+                )
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.compatibilityState = manager.inspect()
+                    self.launch(socketPath: socketPath, stopExistingHost: false) { result in
+                        if case .failure = result { self.powerLaunchInProgress = false }
+                        completion(result)
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.powerLaunchInProgress = false
+                    self.compatibilityState = .failed(message: error.localizedDescription)
+                    completion(.failure(error))
+                }
+            }
+        }
+    }
+
     func shimConnectionChanged(_ connected: Bool) {
         if connected {
             launchState = .connected
+            if powerLaunchInProgress {
+                powerLaunchInProgress = false
+                NSRunningApplication.runningApplications(
+                    withBundleIdentifier: ChatGPTShimConfiguration.bundleIdentifier
+                ).first(where: { !$0.isTerminated })?.activate(options: [.activateAllWindows])
+            }
         } else if launchState == .connected {
-            launchState = .failed(message: "Shim 连接已断开")
+            launchState = .failed(message: "ChatGPT 连接已断开")
         }
     }
 
     private func scheduleConnectionTimeout() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
             guard let self, self.launchState == .waitingForShim else { return }
-            self.launchState = .failed(message: "ChatGPT 已打开，但 Shim 未在 10 秒内连接")
+            self.powerLaunchInProgress = false
+            self.launchState = .failed(message: "ChatGPT 遥控版已打开，但未在 10 秒内连接")
         }
     }
 
@@ -148,11 +209,11 @@ final class ChatGPTLauncher {
         let infoURL = appURL.appendingPathComponent("Contents/Info.plist")
         guard let info = NSDictionary(contentsOf: infoURL),
               let executable = info["CFBundleExecutable"] as? String else {
-            throw ChatGPTCompatibilityError.invalidSource("兼容副本的启动信息无效")
+            throw ChatGPTCompatibilityError.invalidSource("遥控版的启动信息无效")
         }
         let binary = appURL.appendingPathComponent("Contents/MacOS").appendingPathComponent(executable)
         guard FileManager.default.isExecutableFile(atPath: binary.path) else {
-            throw ChatGPTCompatibilityError.invalidSource("兼容副本的可执行文件不存在")
+            throw ChatGPTCompatibilityError.invalidSource("遥控版的可执行文件不存在")
         }
         try FileManager.default.createDirectory(
             at: URL(fileURLWithPath: ChatGPTShimConfiguration.logPath).deletingLastPathComponent(),

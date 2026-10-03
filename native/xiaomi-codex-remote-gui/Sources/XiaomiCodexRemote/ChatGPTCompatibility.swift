@@ -4,7 +4,7 @@ import Foundation
 
 enum ChatGPTShimConfiguration {
     static let bundleIdentifier = "com.openai.codex"
-    static let displayName = "ChatGPT Shim"
+    static let displayName = "ChatGPT 遥控版"
     static let shimResourceDirectory = "XiaomiCodexRemoteShim"
     static let frameworkRelativePath = "Contents/Frameworks/Codex Framework.framework/Codex Framework"
     static var socketPath: String { "/tmp/xiaomi-codex-remote-\(getuid()).sock" }
@@ -78,7 +78,7 @@ final class ChatGPTCompatibilityManager {
         self.officialAppURL = officialAppURL ?? Self.detectOfficialApp(fileManager: fileManager)
             ?? URL(fileURLWithPath: "/Applications/ChatGPT.app")
         self.patchedAppURL = patchedAppURL ?? fileManager.homeDirectoryForCurrentUser
-            .appendingPathComponent("Applications/ChatGPT-Patched.app")
+            .appendingPathComponent("Applications/ChatGPT-for-XiaomiRemote.app")
         self.runCommand = commandRunner ?? Self.systemCommand
         self.verifySignature = signatureVerifier ?? Self.signatureIsLaunchable
         self.isChatGPTRunning = runningDetector ?? {
@@ -108,10 +108,14 @@ final class ChatGPTCompatibilityManager {
             return .needsPreparation(sourceVersion: sourceVersion)
         }
         guard let installedVersion = bundleVersion(at: patchedAppURL) else {
-            return .needsRepair(reason: "兼容副本的版本信息无效")
+            return .needsRepair(reason: "遥控版的版本信息无效")
         }
         guard installedVersion == sourceVersion else {
             return .needsUpdate(installedVersion: installedVersion, sourceVersion: sourceVersion)
+        }
+        let info = NSDictionary(contentsOf: patchedAppURL.appendingPathComponent("Contents/Info.plist"))
+        guard info?["CFBundleDisplayName"] as? String == ChatGPTShimConfiguration.displayName else {
+            return .needsRepair(reason: "请重新设置遥控支持，将原有副本更新为「ChatGPT 遥控版」。")
         }
         do {
             try validatePreparedBundle(at: patchedAppURL)
@@ -123,7 +127,7 @@ final class ChatGPTCompatibilityManager {
 
     func prepare() throws {
         guard !isChatGPTRunning() else {
-            throw ChatGPTCompatibilityError.commandFailed("请先正常退出 ChatGPT，再准备兼容副本")
+            throw ChatGPTCompatibilityError.commandFailed("请先正常退出 ChatGPT，再设置遥控支持")
         }
         guard let sourceVersion = bundleVersion(at: officialAppURL),
               bundleIdentifier(at: officialAppURL) == ChatGPTShimConfiguration.bundleIdentifier else {
@@ -134,13 +138,13 @@ final class ChatGPTCompatibilityManager {
         let source = officialAppURL.resolvingSymlinksInPath().standardizedFileURL
         let target = patchedAppURL.resolvingSymlinksInPath().standardizedFileURL
         guard source != target else {
-            throw ChatGPTCompatibilityError.invalidSource("兼容副本不能覆盖官方 ChatGPT.app")
+            throw ChatGPTCompatibilityError.invalidSource("遥控版不能覆盖官方 ChatGPT.app")
         }
 
         let parent = patchedAppURL.deletingLastPathComponent()
         try fileManager.createDirectory(at: parent, withIntermediateDirectories: true)
-        let staging = parent.appendingPathComponent(".ChatGPT-Patched.\(UUID().uuidString).app")
-        let backup = parent.appendingPathComponent(".ChatGPT-Patched.backup.\(UUID().uuidString).app")
+        let staging = parent.appendingPathComponent(".ChatGPT-for-XiaomiRemote.\(UUID().uuidString).app")
+        let backup = parent.appendingPathComponent(".ChatGPT-for-XiaomiRemote.backup.\(UUID().uuidString).app")
         defer {
             try? fileManager.removeItem(at: staging)
             try? fileManager.removeItem(at: backup)
@@ -168,10 +172,10 @@ final class ChatGPTCompatibilityManager {
             staging.path,
         ])
         guard verifySignature(staging) else {
-            throw ChatGPTCompatibilityError.verificationFailed("兼容副本签名验证失败")
+            throw ChatGPTCompatibilityError.verificationFailed("遥控版签名验证失败")
         }
         guard bundleVersion(at: staging) == sourceVersion else {
-            throw ChatGPTCompatibilityError.verificationFailed("兼容副本版本与官方应用不一致")
+            throw ChatGPTCompatibilityError.verificationFailed("遥控版版本与官方应用不一致")
         }
         try validatePreparedBundle(at: staging)
 
@@ -207,15 +211,15 @@ final class ChatGPTCompatibilityManager {
             .appendingPathComponent(ChatGPTShimConfiguration.shimResourceDirectory)
         guard ["preload.cjs", "patch.cjs"].allSatisfy({
             fileManager.isReadableFile(atPath: embeddedShim.appendingPathComponent($0).path)
-        }) else { throw ChatGPTCompatibilityError.verificationFailed("兼容副本缺少内置 shim") }
+        }) else { throw ChatGPTCompatibilityError.verificationFailed("遥控版缺少内置 shim") }
         guard try ElectronFuseEditor.nodeOptionsEnabled(in: frameworkURL(in: appURL)) else {
-            throw ChatGPTCompatibilityError.verificationFailed("兼容副本的 Electron fuse 未开启")
+            throw ChatGPTCompatibilityError.verificationFailed("遥控版的 Electron fuse 未开启")
         }
         guard launchEnvironmentIsCurrent(in: appURL) else {
-            throw ChatGPTCompatibilityError.verificationFailed("兼容副本的启动环境需要修复")
+            throw ChatGPTCompatibilityError.verificationFailed("遥控版的启动环境需要修复")
         }
         guard verifySignature(appURL) else {
-            throw ChatGPTCompatibilityError.verificationFailed("兼容副本签名无效")
+            throw ChatGPTCompatibilityError.verificationFailed("遥控版签名无效")
         }
     }
 

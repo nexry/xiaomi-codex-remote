@@ -6,7 +6,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="${CHATGPT_APP:-/Applications/ChatGPT.app}"
-DST="${CHATGPT_SHIM_APP:-$HOME/Applications/ChatGPT-Patched.app}"
+DST="${CHATGPT_SHIM_APP:-$HOME/Applications/ChatGPT-for-XiaomiRemote.app}"
 FW_REL="Contents/Frameworks/Codex Framework.framework/Codex Framework"
 
 if [ ! -d "$SRC" ]; then
@@ -26,8 +26,8 @@ case "$DST_CANON" in
   *) echo "Compatibility target must end in .app: $DST_CANON" >&2; exit 1 ;;
 esac
 
-STAGING="$(dirname "$DST_CANON")/.ChatGPT-Patched.$$.app"
-BACKUP="$(dirname "$DST_CANON")/.ChatGPT-Patched.backup.$$.app"
+STAGING="$(dirname "$DST_CANON")/.ChatGPT-for-XiaomiRemote.$$.app"
+BACKUP="$(dirname "$DST_CANON")/.ChatGPT-for-XiaomiRemote.backup.$$.app"
 INSTALLED=0
 cleanup() {
   rm -rf "$STAGING"

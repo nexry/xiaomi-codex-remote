@@ -67,6 +67,8 @@ struct XiaomiKeyMapping {
         // The physical voice button owns microphone open/close coordination,
         // so its Codex target must stay paired with push-to-talk.
         result.updateValue(voiceBinding, forKey: "voice")
+        // Power is reserved for opening the remote-enabled host, not Micro input.
+        result.updateValue(nil, forKey: "power")
         return result
     }
 

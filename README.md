@@ -11,7 +11,7 @@ Xiaomi Codex Remote 是一个面向 macOS 的开源实验项目，用于把小�
 - 基于捕获数据实现的 ATVV 音频解析和虚拟音频路由。
 
 > [!IMPORTANT]
-> v0.3.0 主要更新键位配置与界面。自动化测试覆盖模拟输入、协议封包和本地链路，不能替代真机验收。v0.3.0 发布附件未内置 `MiCodexRemote2ch.driver`，使用遥控器语音前需授予所需系统权限、准备兼容的双声道虚拟音频设备，并确认 BLE 音频连接就绪。
+> v0.3.1 新增 Power 自动打开 ChatGPT 遥控版，并优化按键设置界面。自动化测试覆盖模拟输入、协议封包和本地链路，不能替代真机验收。v0.3.1 发布附件未内置 `MiCodexRemote2ch.driver`，使用遥控器语音前需授予所需系统权限、准备兼容的双声道虚拟音频设备，并确认 BLE 音频连接就绪。
 
 ## 当前状态
 
@@ -19,18 +19,19 @@ Xiaomi Codex Remote 是一个面向 macOS 的开源实验项目，用于把小�
 | --- | --- | --- |
 | JSONL 模拟按键 | 可用 | 无需遥控器，适合开发和协议回归测试 |
 | Codex Micro 协议与 shim | 已实现 | 使用受管理的 ChatGPT 兼容副本；宿主升级后需要更新副本 |
-| macOS 原生 GUI | 已实现 | 包含独立权限与日志面板、Dock 图标偏好、兼容副本管理和真实 shim 连接状态 |
-| RC003 按键输入 | 已有真机验证记录 | v0.3.0 新默认 OK → ACT12 已通过协议测试，仍需在目标宿主重新进行真机验收 |
+| macOS 原生 GUI | 已实现 | 包含按键设置、权限与日志、Dock 图标偏好、遥控版管理和真实连接状态 |
+| RC003 按键输入 | 已有真机验证记录 | OK 默认 ACT12；Power 自动启动和具体宿主行为仍需目标环境真机验收 |
 | RC003 语音与虚拟音频 | 已实现，已有真机验证记录 | 使用前需授予所需系统权限，并准备兼容的双声道虚拟音频设备；其他环境需分别验收 |
 
-## v0.3.0 更新
+## v0.3.1 更新
 
-- 新增独立键位映射页，直接点击小米遥控器图片上的按钮进行配置。
-- 使用 240 × 240 pt 的真实 Micro 图片选择输出，旋钮和摇杆展开二级事件菜单，并显示子事件的选中态。
-- 统一待绑定虚线、已绑定蓝色实线和点击渐变样式；修正方向键轮廓与 OK 层级。
-- OK 默认绑定 ACT12「提交」；GUI 中语音键固定 ACT10「按住说话」，不可取消或修改，CLI 配置仍可覆盖或禁用。
-- 优化固定 800 × 560 pt 窗口、偏好设置与菜单栏菜单。
-- 已保存的键位配置会保留，不自动覆盖 OK 的旧绑定。只需手动将 OK 改为「提交」；恢复默认键位会重置全部绑定。
+- GUI 的 Power 键固定用于打开 ChatGPT 遥控版：首次确认后自动设置或更新副本并启动，正常退出失败时停止；已连接时切到前台，连续按键不重复执行。
+- 遥控版文件名改为 `ChatGPT-for-XiaomiRemote.app`，界面统一使用「ChatGPT 遥控版」和「遥控连接服务」。
+- 页面改为「按键设置」，遥控器卡片分层展示状态、固定按键和说明；编辑弹窗提供底部「清除绑定」与右上角关闭按钮，按内容确定高度。
+- Micro 图片保持 240 × 240 pt，支持旋钮、摇杆子事件高亮；修复首次打开编辑器时缺少绑定选中态。
+- 缩小遥控器圆形按钮描边，保持中心点、方向键 SVG、1 pt 线宽及 3/3 pt 虚线不变。
+- OK 默认绑定 ACT12；GUI 语音固定 ACT10 并协调麦克风启停。实际宿主行为由 ChatGPT 配置，CLI 仍允许覆盖语音或 Power。
+- GUI 忽略旧 Power 绑定，其他保存的设置保持不变。从旧副本路径升级需重新设置遥控支持并更新 Dock 入口；不会自动删除旧副本。
 
 详情见 [CHANGELOG.md](CHANGELOG.md)。
 
@@ -60,7 +61,7 @@ GUI 直接读取真实遥控器输入并使用内置原生桥接，不依赖 Nod
 - 打包完整 GUI：还需支持当前 Icon Composer `.icon` 资源的 Xcode `actool`，不能仅凭 Swift 版本判断能否打包；
 - 使用 CLI 或运行 JavaScript 测试：Node.js 18+；
 - 真实遥控器路径：已在 macOS 蓝牙设置中配对的 RC003；
-- 遥控器语音路径：项目虚拟音频驱动或其他可用的双声道回环设备；v0.3.0 发布包未内置驱动。
+- 遥控器语音路径：项目虚拟音频驱动或其他可用的双声道回环设备；v0.3.1 发布包未内置驱动。
 
 ## 快速开始
 
@@ -109,7 +110,7 @@ open "native/xiaomi-codex-remote-gui/Xiaomi Codex Remote.app"
 RELEASE_UNIVERSAL=1 bash native/xiaomi-codex-remote-gui/bundle-app.sh
 ```
 
-v0.3.0 发布附件不含音频驱动；源码打包时，如果 `native/XiaomiCodexRemoteAudio/MiCodexRemote2ch.driver` 已存在，脚本会将其复制到应用资源中。因此，源码构建的内容可能与发布附件不同。
+v0.3.1 发布附件不含音频驱动；源码打包时，如果 `native/XiaomiCodexRemoteAudio/MiCodexRemote2ch.driver` 已存在，脚本会将其复制到应用资源中。因此，源码构建的内容可能与发布附件不同。
 
 ### 4. 系统权限
 
@@ -128,37 +129,41 @@ v0.3.0 发布附件不含音频驱动；源码打包时，如果 `native/XiaomiC
 
 | RC003 逻辑键 | Codex Micro 输出 | 行为 |
 | --- | --- | --- |
-| `voice` | `ACT10` | 按住说话，按下/释放；仅 GUI 固定绑定 |
-| `ok` | `ACT12` | 提交当前 Agent 的输入内容（composer.submit），按下/释放 |
+| `voice` | `ACT10` | 按下/释放；GUI 固定绑定，并按住开启遥控器麦克风、松开关闭 |
+| `ok` | `ACT12` | Micro ACT12 键位，按下/释放 |
 | `volume_up` | `ENC_CC` | 旋转事件，`act: 2` |
 | `volume_down` | `ENC_CW` | 旋转事件，`act: 2` |
 | `home` | `AG00` | 按下/释放 |
 | `menu` | `AG01` | 按下/释放 |
 | `back` | `ACT08` | 按下/释放，可禁用 |
 | `up/down/left/right` | `v.oai.rad` | 摇杆方向 |
-| `power` | 未绑定 | 默认禁用 |
+| `power` | GUI 固定启动操作；CLI 默认未绑定 | GUI 自动设置并打开 ChatGPT 遥控版，不发送 Micro 输入 |
 | `tv` | 未绑定 | GUI 可配置；真实 RC003 的 TV 输入 usage 尚未捕获，不能保证真机触发 |
 
 CLI 可通过 `--xiaomi-config` 加载 [config/xiaomi.example.json](config/xiaomi.example.json) 格式的覆盖配置。不要为未捕获、未验证的设备字段自行填写 VID/PID、usage、GATT UUID、opcode、采样率或编解码器。
+
+本项目只把遥控器输入绑定到 Micro 键位或旋钮、摇杆输入，不绑定具体的 ChatGPT 事件，也不读取 ChatGPT 的 Micro 行为配置。实际行为由 ChatGPT 的 Codex Micro 控制面板决定，不能将 ACT12、ACT08 固定解释为「提交」「拒绝」。图片图标仅用于定位键位。语音键是本地特殊处理：GUI 固定发送 ACT10，并协调遥控器麦克风启停；ACT10 在宿主中的行为仍由宿主配置决定。
 
 GUI 与 CLI 的默认四个方向键均绑定摇杆事件，但示例配置将 `up`、`down`、`left`、`right` 显式设为 `null`；加载该示例会禁用方向键，而不是保留默认方向行为。CLI 也允许覆盖语音键或将其设为 `null`，不受 GUI 固定 ACT10 的限制。
 
 ## 与桌面宿主应用连接
 
-官方 ChatGPT 的 Electron fuse 默认不接受 `NODE_OPTIONS`。GUI 通过明确的用户操作，在 `~/Applications/ChatGPT-Patched.app` 创建受管理的兼容副本；官方 `/Applications/ChatGPT.app` 保持只读。
+官方 ChatGPT 的 Electron fuse 默认不接受 `NODE_OPTIONS`。GUI 通过明确的用户操作，在 `~/Applications/ChatGPT-for-XiaomiRemote.app` 创建受管理的兼容副本；官方 `/Applications/ChatGPT.app` 保持只读。
 
 首次使用流程：
 
 1. 正常退出 ChatGPT；
-2. 在 GUI 中点击“准备 ChatGPT 兼容副本”；
+2. 在 GUI 中点击“设置遥控支持”；
 3. GUI 原生完成复制、NodeOptions fuse 修改、内置 shim、启动环境、本地签名和验证，不需要 Node.js 或终端；
-4. 点击“打开 ChatGPT Shim”。只有本地 socket 实际连接后，界面才显示“已注入并连接”；
-5. 使用“在 Finder 中显示”可将显示名为 `ChatGPT Shim` 的兼容副本拖入 Dock。以后从 Dock 启动也会加载 shim，但 Xiaomi Codex Remote 需要保持运行。
+4. 点击“打开 ChatGPT 遥控版”。若需要退出当前 ChatGPT，会先请求确认；只有本地 socket 实际连接后，界面才显示“已连接”；
+5. 使用“在 Finder 中显示”可将显示名为「ChatGPT 遥控版」 的兼容副本拖入 Dock。以后从 Dock 启动也会加载 shim，但 Xiaomi Codex Remote 需要保持运行。
+
+也可以按遥控器 Power 键：首次确认后自动完成正常退出、设置或更新、启动连接服务和打开遥控版。已连接时切到前台；退出失败停止，不强制退出。此功能只在 GUI 中提供，不向 Micro 发送 Power 事件。
 
 GUI 会比较官方应用与兼容副本的 `CFBundleVersion`：
 
-- 没有兼容副本：显示“需要准备”；
-- 官方版本变化：显示“需要更新兼容副本”；
+- 没有兼容副本：显示“需要设置”；
+- 官方版本变化：显示“需要更新遥控支持”；
 - fuse、内置 shim、启动环境、签名或签名权限不符合要求：显示“需要修复”。
 
 兼容副本使用本地 ad-hoc 签名。OpenAI 团队专属的 application groups、推送和 keychain 权限不能保留，否则 macOS AMFI 会拒绝启动；因此首次打开兼容副本时可能需要重新登录或重新授予系统权限。
@@ -167,7 +172,7 @@ GUI 会比较官方应用与兼容副本的 `CFBundleVersion`：
 
 ```bash
 bash shim/patch-app.sh
-CHATGPT_APP="$HOME/Applications/ChatGPT-Patched.app" bash shim/launch-chatgpt.sh
+CHATGPT_APP="$HOME/Applications/ChatGPT-for-XiaomiRemote.app" bash shim/launch-chatgpt.sh
 ```
 
 这些脚本的检查能力不等同于原生 GUI：准备脚本不会执行 GUI 的完整兼容性检查，启动脚本会尝试退出正在运行的 ChatGPT，再直接启动指定副本。运行前请保存工作并先启动桥接服务；不要将脚本默认的官方应用路径视为无需准备即可注入的保证。
@@ -175,7 +180,7 @@ CHATGPT_APP="$HOME/Applications/ChatGPT-Patched.app" bash shim/launch-chatgpt.sh
 可选环境变量：
 
 - `CHATGPT_APP`：源应用或启动目标路径；
-- `CHATGPT_SHIM_APP`：兼容副本路径，默认 `~/Applications/ChatGPT-Patched.app`；
+- `CHATGPT_SHIM_APP`：兼容副本路径，默认 `~/Applications/ChatGPT-for-XiaomiRemote.app`；
 - `CODEX_MICRO_SOCKET`：Unix socket 路径，GUI 默认使用 `/tmp/xiaomi-codex-remote-<uid>.sock`；
 - `CODEX_MICRO_SHIM_LOG`：shim 日志路径。
 
@@ -195,7 +200,7 @@ swift test --package-path native/xiaomi-codex-remote-gui
 2. 真实 RC003 按键、断连与退出释放；
 3. 具体桌面宿主版本的兼容性。
 
-历史开发环境有按键和语音端到端真机验证记录，但不能作为 v0.3.0 的完整验收。新默认 OK → ACT12 仍需目标宿主真机验收。兼容性验证应记录具体环境并在宿主更新后重新执行。
+历史开发环境有按键和语音端到端真机验证记录，但不能作为 v0.3.1 的完整验收。新默认 OK → ACT12 仍需目标宿主真机验收。兼容性验证应记录具体环境并在宿主更新后重新执行。
 
 ## 目录结构
 

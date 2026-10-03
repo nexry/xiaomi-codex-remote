@@ -14,7 +14,7 @@ struct MainWindow: View {
         var title: String {
             switch self {
             case .status: return "状态与连接"
-            case .keyMapping: return "键位映射"
+            case .keyMapping: return "按键设置"
             case .settings: return "偏好设置"
             case .permissions: return "权限"
             case .logs: return "日志"
@@ -250,18 +250,24 @@ struct MainWindow: View {
             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
 
             VStack(alignment: .leading, spacing: 16) {
-                Text("系统与桥接").font(.headline)
+                Text("系统与连接").font(.headline)
 
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("桥接服务")
-                        Text("负责将遥控器信号转换为 ChatGPT 可识别的指令。")
+                        Text("遥控连接服务")
+                        Text("负责连接遥控器与 ChatGPT，让遥控按键生效。")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button(state.bridge.state == .running ? "重启服务" : "启动服务") {
-                        if state.bridge.state == .running { state.bridge.restart() }
-                        else { state.bridge.start() }
+                    switch state.bridge.state {
+                    case .running:
+                        Text("正常").foregroundStyle(.secondary)
+                    case .starting:
+                        ProgressView().controlSize(.small)
+                    case .stopped:
+                        Button("启动连接服务") { state.bridge.start() }
+                    case .failed:
+                        Button("重启连接服务") { state.bridge.restart() }
                     }
                 }
 
@@ -269,7 +275,7 @@ struct MainWindow: View {
 
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("ChatGPT Shim")
+                        Text("ChatGPT 遥控版")
                         Text(chatGPTCompatibilityDescription)
                             .font(.caption).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -540,7 +546,7 @@ struct MainWindow: View {
     private var bridgeCard: some View {
         StatusCard(
             icon: "cable.connector",
-            title: "桥接服务",
+            title: "遥控连接服务",
             status: bridgeStatus,
             details: bridgeDetails,
             actionLabel: bridgeActionLabel,
@@ -550,37 +556,40 @@ struct MainWindow: View {
 
     private var bridgeStatus: StatusCard.Status {
         switch state.bridge.state {
-        case .running: return .good("运行中")
+        case .running: return .good("正常")
         case .starting: return .warning("启动中")
-        case .failed(let msg): return .error("启动失败: \(msg)")
-        case .stopped: return .inactive("已停止")
+        case .failed(let msg): return .error("异常: \(msg)")
+        case .stopped: return .inactive("未启动")
         }
     }
 
     private var bridgeDetails: [String] {
-        ["Xiaomi Codex Remote 本机连接服务"]
+        ["负责连接遥控器与 ChatGPT，让遥控按键生效。"]
     }
 
     private var bridgeActionLabel: String? {
         switch state.bridge.state {
-        case .running, .starting: return "重启"
-        case .stopped, .failed: return "启动"
+        case .running, .starting: return nil
+        case .stopped: return "启动连接服务"
+        case .failed: return "重启连接服务"
         }
     }
 
     private var bridgeAction: (() -> Void)? {
         switch state.bridge.state {
-        case .running, .starting:
+        case .failed:
             return { state.bridge.restart() }
-        case .stopped, .failed:
+        case .stopped:
             return { state.bridge.start() }
+        case .running, .starting:
+            return nil
         }
     }
 
     private var chatGPTCard: some View {
         StatusCard(
             icon: "bubble.left.fill",
-            title: "ChatGPT Shim",
+            title: "ChatGPT 遥控版",
             status: chatGPTStatus,
             details: chatGPTDetails,
             actionLabel: chatGPTCardActionLabel,
@@ -593,17 +602,17 @@ struct MainWindow: View {
         case .checking: return .inactive("正在检查")
         case .sourceMissing: return .error("未找到官方应用")
         case .needsPreparation: return .warning("需要准备")
-        case .needsUpdate: return .warning("需要更新兼容副本")
+        case .needsUpdate: return .warning("需要更新遥控支持")
         case .needsRepair: return .warning("需要修复")
         case .preparing: return .warning("正在准备")
         case let .failed(message): return .error(message)
         case .ready:
             switch state.chatGPTLauncher.launchState {
-            case .connected: return .good("已注入并连接")
+            case .connected: return .good("已连接")
             case .launching: return .warning("正在打开")
-            case .waitingForShim: return .warning("等待 Shim 连接")
+            case .waitingForShim: return .warning("等待 ChatGPT 连接")
             case let .failed(message): return .error(message)
-            case .idle: return .inactive("兼容副本已就绪")
+            case .idle: return .inactive("遥控版已就绪")
             }
         }
     }
@@ -611,36 +620,36 @@ struct MainWindow: View {
     private var chatGPTDetails: [String] {
         switch state.chatGPTLauncher.compatibilityState {
         case let .ready(version):
-            return ["ChatGPT Shim · \(version)", "可在 Finder 中拖入 Dock"]
+            return ["ChatGPT 遥控版 · \(version)", "可在 Finder 中拖入 Dock"]
         case let .needsUpdate(installed, source):
-            return ["兼容副本 \(installed)", "官方版本 \(source)"]
+            return ["遥控版 \(installed)", "官方版本 \(source)"]
         case let .needsRepair(reason): return [reason]
         case let .needsPreparation(version): return ["官方版本 \(version)"]
         case .sourceMissing: return ["请先安装官方 ChatGPT.app"]
         case .preparing: return ["正在复制、配置并验证应用"]
         case let .failed(message): return [message]
-        case .checking: return ["正在检查版本、fuse 与签名"]
+        case .checking: return ["正在检查版本和遥控支持"]
         }
     }
 
     private var chatGPTCompatibilityDescription: String {
         switch state.chatGPTLauncher.compatibilityState {
-        case .checking: return "正在检查官方应用与兼容副本。"
+        case .checking: return "正在检查官方应用与遥控版。"
         case .sourceMissing: return "未找到官方 ChatGPT.app。"
-        case .needsPreparation: return "创建一次兼容副本后，可把 ChatGPT Shim 拖到 Dock 日常使用。"
-        case .needsUpdate: return "官方 ChatGPT 已更新，需要同步更新兼容副本。"
-        case .needsRepair: return "兼容副本的 shim、fuse、启动环境或签名需要修复。"
-        case .preparing: return "正在复制、配置并验证兼容副本，请稍候。"
-        case .ready: return "兼容副本位于“应用程序”目录；显示后可将它拖到 Dock。"
+        case .needsPreparation: return "为了让遥控器控制 ChatGPT，我们会创建一个支持遥控的独立副本，不会修改原版。使用遥控器时，请打开「ChatGPT 遥控版」。"
+        case .needsUpdate: return "官方 ChatGPT 已更新，需要同步更新遥控支持。"
+        case .needsRepair: return "遥控支持需要修复，请点击下方按钮重新设置。"
+        case .preparing: return "正在复制、配置并验证遥控版，请稍候。"
+        case .ready: return "遥控版位于“应用程序”目录；显示后可将它拖到 Dock。"
         case let .failed(message): return message
         }
     }
 
     private var chatGPTCompatibilityActionLabel: String? {
         switch state.chatGPTLauncher.compatibilityState {
-        case .needsPreparation: return "准备兼容副本"
-        case .needsUpdate: return "更新兼容副本"
-        case .needsRepair, .failed: return "修复兼容副本"
+        case .needsPreparation: return "设置遥控支持"
+        case .needsUpdate: return "更新遥控支持"
+        case .needsRepair, .failed: return "修复遥控支持"
         default: return nil
         }
     }
@@ -649,7 +658,7 @@ struct MainWindow: View {
         if let label = chatGPTCompatibilityActionLabel { return label }
         guard case .ready = state.chatGPTLauncher.compatibilityState,
               state.bridge.state == .running else { return nil }
-        return "打开 ChatGPT Shim"
+        return "打开 ChatGPT 遥控版"
     }
 
     private var chatGPTCardAction: (() -> Void)? {
@@ -681,7 +690,7 @@ struct MainWindow: View {
     private var sidebarStatus: StatusCard.Status {
         if remoteConnected && state.bridge.shimConnected { return .good("按键已连接") }
         if remotePermissionNeeded { return .error("需要输入监控权限") }
-        if case .failed = state.bridge.state { return .error("桥接服务启动失败") }
+        if case .failed = state.bridge.state { return .error("连接服务异常") }
         return .inactive("等待连接")
     }
 
@@ -710,19 +719,19 @@ struct MainWindow: View {
         }
         switch state.chatGPTLauncher.compatibilityState {
         case .sourceMissing:
-            return NextStep(title: "安装 ChatGPT", message: "需要先安装官方 ChatGPT.app，才能创建兼容副本。",
+            return NextStep(title: "安装 ChatGPT", message: "需要先安装官方 ChatGPT.app，才能创建遥控版。",
                             button: nil, action: nil)
         case .needsPreparation:
-            return NextStep(title: "准备 ChatGPT 兼容副本", message: "应用会在“应用程序”目录创建 ChatGPT Shim，并完成 fuse、shim 和签名配置。",
-                            button: "准备兼容副本", action: { state.prepareChatGPTCompatibility() })
+            return NextStep(title: "设置遥控支持", message: "创建支持遥控的独立副本，不会修改原版。使用遥控器时，请打开「ChatGPT 遥控版」。",
+                            button: "设置遥控支持", action: { state.prepareChatGPTCompatibility() })
         case .needsUpdate:
-            return NextStep(title: "更新 ChatGPT 兼容副本", message: "官方 ChatGPT 已更新，请同步兼容副本后继续使用。",
-                            button: "更新兼容副本", action: { state.prepareChatGPTCompatibility() })
+            return NextStep(title: "更新遥控支持", message: "官方 ChatGPT 已更新，请同步遥控版后继续使用。",
+                            button: "更新遥控支持", action: { state.prepareChatGPTCompatibility() })
         case .needsRepair, .failed:
-            return NextStep(title: "修复 ChatGPT 兼容副本", message: chatGPTCompatibilityDescription,
-                            button: "修复兼容副本", action: { state.prepareChatGPTCompatibility() })
+            return NextStep(title: "修复遥控支持", message: chatGPTCompatibilityDescription,
+                            button: "修复遥控支持", action: { state.prepareChatGPTCompatibility() })
         case .preparing:
-            return NextStep(title: "正在准备兼容副本", message: "正在复制、配置并验证 ChatGPT，请保持 Xiaomi Codex Remote 运行。",
+            return NextStep(title: "正在设置遥控支持", message: "正在复制、配置并验证 ChatGPT，请保持 Xiaomi Codex Remote 运行。",
                             button: nil, action: nil)
         case .checking, .ready:
             break
@@ -732,12 +741,12 @@ struct MainWindow: View {
                             button: nil, action: nil)
         }
         if state.bridge.state != .running {
-            return NextStep(title: "启动桥接服务", message: "遥控器已连接，还需要本机桥接服务传送按键。",
+            return NextStep(title: "遥控连接服务", message: "负责连接遥控器与 ChatGPT，让遥控按键生效。",
                             button: bridgeActionLabel, action: bridgeAction)
         }
         if !state.bridge.shimConnected {
-            return NextStep(title: "连接 ChatGPT", message: "打开 ChatGPT Shim；连接成功后才会显示为已注入。",
-                            button: "打开 ChatGPT Shim", action: { state.launchChatGPT() })
+            return NextStep(title: "连接 ChatGPT", message: "打开 ChatGPT 遥控版；连接成功后才会显示为已连接。",
+                            button: "打开 ChatGPT 遥控版", action: { state.launchChatGPT() })
         }
         if state.driverManager.status == .notInstalled || driverInstallFailed {
             return NextStep(title: "准备音频设备", message: "安装音频驱动后才能使用遥控器语音。",

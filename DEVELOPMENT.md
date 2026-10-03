@@ -30,7 +30,7 @@ stdin / 外部 JSONL IPC
 
 ## ChatGPT 兼容副本
 
-`ChatGPTCompatibilityManager` 只在用户点击准备、更新或修复按钮后工作。固定目标为 `~/Applications/ChatGPT-Patched.app`，官方应用保持只读。处理流程为：
+`ChatGPTCompatibilityManager` 在用户点击设置、更新、修复遥控支持，或明确启用并按下 Power 启动键后工作。固定目标为 `~/Applications/ChatGPT-for-XiaomiRemote.app`，显示名为「ChatGPT 遥控版」，官方应用保持只读。处理流程为：
 
 1. 在目标同目录创建 staging bundle；
 2. 复制官方应用并嵌入 `preload.cjs` 与 `patch.cjs`；
@@ -41,7 +41,9 @@ stdin / 外部 JSONL IPC
 
 ad-hoc 签名不能保留 OpenAI 团队专属的 application identifier、application groups、推送和 keychain entitlements。`codesign --verify` 本身不会报告这一类 AMFI 启动失败，因此兼容性检查还必须读取根应用 entitlements 并拒绝包含受限项的旧副本。
 
-GUI 以 `CFBundleVersion` 区分需要准备和需要更新，以 bundle 内容、fuse、启动环境及签名策略区分需要修复。启动动作进入等待状态，只有 `CodexSocketServer` 的真实连接回调才能把状态改为“已注入并连接”。从 Dock 启动依赖兼容副本 `Info.plist` 中持久化的 `LSEnvironment`，不是 GUI 进程临时传入的环境变量。
+GUI 以 `CFBundleVersion` 区分需要设置和需要更新，以 bundle 内容、显示名、fuse、启动环境及签名策略区分需要修复。启动动作进入等待状态，只有 `CodexSocketServer` 的真实连接回调才能把状态改为“已连接”。从 Dock 启动依赖遥控版 `Info.plist` 中持久化的 `LSEnvironment`，不是 GUI 进程临时传入的环境变量。
+
+GUI 的 Power 键是固定启动操作，不进入 Micro 路由。首次确认持久化用户同意，后续按键自动正常退出正在运行的 ChatGPT、按需准备副本、启动并等待连接；已连接时激活窗口，退出失败不会强制终止。整个操作防止重复进入。CLI 的 Power 默认仍未绑定且允许覆盖；语音协调和线协议不受此次修改影响。
 
 ## 输入源契约
 
@@ -54,7 +56,9 @@ Node 输入源继承 `EventEmitter`，并实现异步 `start()` / `stop()`；后
 
 普通按键使用配对的 `press` / `release`。`act: 2` 只用于编码器旋转，不用于普通 HID 自动重复。连接真实 transport 时复用现有 `Link` 和 framing，不复制协议实现。
 
-GUI 将语音键固定为 ACT10，加载保存配置时也会恢复该绑定；Node CLI 的配置仍允许覆盖或禁用语音键。两条路径默认都将方向键映射到摇杆事件，但 `config/xiaomi.example.json` 显式禁用了四个方向键，加载示例时需注意这一覆盖行为。
+本项目绑定的是 Micro 键位或旋钮、摇杆输入，实际行为由 ChatGPT 的 Codex Micro 控制面板决定。当前 Shim 只转发 HID 数据，不读取或同步宿主行为配置；界面应使用键位标识，而不是硬编码「提交」「拒绝」等行为名称。
+
+GUI 将语音键固定为 ACT10，加载保存配置时也会恢复该绑定，并在按下/释放时开启/关闭遥控器麦克风；这不保证 ACT10 在宿主中一定执行语音行为，宿主行为仍由其配置决定。Node CLI 的配置仍允许覆盖或禁用语音键。两条路径默认都将方向键映射到摇杆事件，但 `config/xiaomi.example.json` 显式禁用了四个方向键，加载示例时需注意这一覆盖行为。
 
 ## 本地开发
 
@@ -94,7 +98,7 @@ v0.3.0 发布附件不内置音频驱动。源码打包时，脚本会复制已�
 - 新行为优先添加最小回归测试；
 - 权限测试必须使用注入的权限提供者，不更改开发机的真实系统权限；
 - GUI 只有在匹配设备且输入监控已授权时才应显示连接成功；
-- 只有真实 `shimConnected` 回调才能显示 ChatGPT 已注入；
+- 只有真实 `shimConnected` 回调才能显示 ChatGPT 已连接；
 - 兼容副本签名不得保留需要 OpenAI Team ID 的受限 entitlements；
 - socket 断开、输入结束、异常和应用退出都必须清理按键状态。
 

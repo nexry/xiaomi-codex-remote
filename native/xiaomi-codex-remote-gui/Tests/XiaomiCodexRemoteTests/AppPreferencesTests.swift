@@ -3,6 +3,13 @@ import XCTest
 @testable import XiaomiCodexRemote
 
 final class AppPreferencesTests: XCTestCase {
+    func testPowerCannotRestoreAnOldMicroBinding() throws {
+        let mapping = try XiaomiKeyMapping.make(overrides: [
+            "power": .some(.init(kind: .key, keycode: "ACT06", agent: nil, angle: nil))
+        ])
+        XCTAssertTrue(mapping.keys.contains("power"))
+        XCTAssertNil(mapping["power"]!)
+    }
     func testDockIconIsVisibleByDefaultAndPreferencePersists() {
         let suiteName = "AppPreferencesTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

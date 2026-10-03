@@ -4,6 +4,7 @@ import Foundation
 enum AppPreferences {
     static let hideDockIconKey = "hideDockIcon"
     static let keyMappingKey = "xiaomiKeyMapping"
+    static let powerLaunchConsentKey = "powerLaunchConsent"
 
     static func hideDockIcon(in defaults: UserDefaults = .standard) -> Bool {
         defaults.bool(forKey: hideDockIconKey)

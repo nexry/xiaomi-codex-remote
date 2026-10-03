@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import Observation
 
 private struct RemoteKeyOutlineShape: Shape {
     let keyID: String
@@ -67,16 +68,16 @@ private struct RemoteKeyOutlineShape: Shape {
         let center = point(Self.center(for: keyID))
         let radius: CGFloat
         switch keyID {
-        case "power", "voice": radius = 35
-        case "ok": radius = 69
-        default: radius = 49
+        case "power", "voice": radius = 33
+        case "ok": radius = 67
+        default: radius = 47
         }
         let topButton = keyID == "power" || keyID == "voice"
-        // At 50% image scale, move the top edge down 1 pt and keep the bottom edge.
+        // Preserve the existing top-button center's 0.5 pt vertical adjustment.
         return Path(ellipseIn: CGRect(x: center.x - radius * scale,
-                                      y: center.y - radius * scale + (topButton ? 2 * scale : 0),
+                                      y: center.y - radius * scale + (topButton ? scale : 0),
                                       width: radius * 2 * scale,
-                                      height: (radius * 2 - (topButton ? 2 : 0)) * scale))
+                                      height: radius * 2 * scale))
     }
 }
 
@@ -122,23 +123,29 @@ private struct RemoteKeyHotspotStyle: ButtonStyle {
     }
 }
 
+@Observable
+final class BindingEditorSession: Identifiable {
+    let id: String
+    let originalBinding: XiaomiBinding?
+    var binding: XiaomiBinding?
+    var pendingBinding: XiaomiBinding?
+
+    init(id: String, binding: XiaomiBinding?) {
+        self.id = id
+        originalBinding = binding
+        self.binding = binding
+    }
+
+    var hasChanges: Bool { binding != originalBinding }
+    var isVoiceLocked: Bool { id == "voice" }
+}
+
 struct KeyMappingPage: View {
     var state: AppState
 
-    private struct BindingEditorSession: Identifiable {
-        let id: String
-        var binding: XiaomiBinding?
-    }
-
     @State private var editingSession: BindingEditorSession?
-    private var selectedKey: String { editingSession?.id ?? "" }
-    private var editingBinding: XiaomiBinding? {
-        get { editingSession?.binding }
-        nonmutating set { editingSession?.binding = newValue }
-    }
     @State private var errorMessage: String?
     @State private var showsRestoreConfirmation = false
-    @State private var pendingTarget: BindingTarget?
 
     private struct RemoteKey: Identifiable {
         let id: String
@@ -174,20 +181,20 @@ struct KeyMappingPage: View {
     private static let agentTargets = [0, 1, 2, 3, 4, 5].map { (index: Int) in
         BindingTarget(
             id: "AG0\(index)",
-            title: "Agent \(index)",
-            detail: "AG0\(index)",
+            title: "AG0\(index)",
+            detail: "Micro 键位",
             symbol: "person.crop.square",
             binding: .init(kind: .key, keycode: "AG0\(index)", agent: index, angle: nil)
         )
     }
 
     private static let actionTargets = [
-        BindingTarget(id: "ACT06", title: "快速", detail: "ACT06", symbol: "bolt", binding: .init(kind: .key, keycode: "ACT06", agent: nil, angle: nil)),
-        BindingTarget(id: "ACT07", title: "同意", detail: "ACT07", symbol: "checkmark.circle", binding: .init(kind: .key, keycode: "ACT07", agent: nil, angle: nil)),
-        BindingTarget(id: "ACT08", title: "拒绝", detail: "ACT08", symbol: "xmark.circle", binding: .init(kind: .key, keycode: "ACT08", agent: nil, angle: nil)),
-        BindingTarget(id: "ACT09", title: "分支", detail: "ACT09", symbol: "arrow.triangle.branch", binding: .init(kind: .key, keycode: "ACT09", agent: nil, angle: nil)),
-        BindingTarget(id: "ACT10", title: "按住说话", detail: "ACT10", symbol: "mic", binding: .init(kind: .key, keycode: "ACT10", agent: nil, angle: nil)),
-        BindingTarget(id: "ACT12", title: "提交", detail: "ACT12", symbol: "paperplane", binding: .init(kind: .key, keycode: "ACT12", agent: nil, angle: nil)),
+        BindingTarget(id: "ACT06", title: "ACT06", detail: "Micro 键位", symbol: "bolt", binding: .init(kind: .key, keycode: "ACT06", agent: nil, angle: nil)),
+        BindingTarget(id: "ACT07", title: "ACT07", detail: "Micro 键位", symbol: "checkmark.circle", binding: .init(kind: .key, keycode: "ACT07", agent: nil, angle: nil)),
+        BindingTarget(id: "ACT08", title: "ACT08", detail: "Micro 键位", symbol: "xmark.circle", binding: .init(kind: .key, keycode: "ACT08", agent: nil, angle: nil)),
+        BindingTarget(id: "ACT09", title: "ACT09", detail: "Micro 键位", symbol: "arrow.triangle.branch", binding: .init(kind: .key, keycode: "ACT09", agent: nil, angle: nil)),
+        BindingTarget(id: "ACT10", title: "ACT10", detail: "Micro 键位", symbol: "mic", binding: .init(kind: .key, keycode: "ACT10", agent: nil, angle: nil)),
+        BindingTarget(id: "ACT12", title: "ACT12", detail: "Micro 键位", symbol: "paperplane", binding: .init(kind: .key, keycode: "ACT12", agent: nil, angle: nil)),
     ]
 
     private static let controlTargets = [
@@ -202,8 +209,8 @@ struct KeyMappingPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text("键位映射").font(.largeTitle.weight(.semibold))
-            Text("点击小米遥控器上的按键，在弹出的 Codex Micro 面板中查看或修改绑定。")
+            Text("按键设置").font(.largeTitle.weight(.semibold))
+            Text("点击左侧遥控器上的按钮，查看或设置对应的 Codex Micro 按键。")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -217,15 +224,15 @@ struct KeyMappingPage: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .sheet(item: $editingSession) { session in
-            bindingEditorSheet(for: session.id)
+            bindingEditorSheet(for: session)
         }
-        .confirmationDialog("恢复默认键位？", isPresented: $showsRestoreConfirmation) {
+        .confirmationDialog("恢复默认设置？", isPresented: $showsRestoreConfirmation) {
             Button("恢复默认", role: .destructive, action: restoreDefaults)
             Button("取消", role: .cancel) {}
         } message: {
-            Text("所有自定义绑定都会被默认映射替换。")
+            Text("所有自定义按键设置都会恢复为默认值。Power 和语音键的固定用途不变。")
         }
-        .alert("无法保存键位映射", isPresented: Binding(
+        .alert("无法保存按键设置", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
         )) {
@@ -236,84 +243,110 @@ struct KeyMappingPage: View {
     }
 
     private var remoteSummaryPanel: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 7) {
-                Text(state.remoteName ?? "小米遥控器 RC003").font(.title3.weight(.semibold))
+                Text("小米蓝牙遥控器2").font(.title3.weight(.semibold))
                 Label(
                     state.remoteConnected ? "已连接" : "未连接",
                     systemImage: state.remoteConnected ? "checkmark.circle.fill" : "circle.dashed"
                 )
                 .foregroundStyle(state.remoteConnected ? Color.green : Color.secondary)
-                Text("\(boundCount) 个按键已绑定 · \(Self.remoteKeys.count - boundCount) 个未绑定")
+                Text("\(boundCount) 个已设置 · \(configurableKeys.count - boundCount) 个未设置")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
 
             Divider()
 
-            Text("直接点击左侧遥控器上的按键查看当前绑定。保存后，新映射会立即生效；遥控器未连接时也可以离线配置。语音键固定为按住说话。")
-                .font(.subheadline)
+            VStack(alignment: .leading, spacing: 10) {
+                Text("固定按键").font(.subheadline.weight(.semibold))
+                Label("Power：打开 ChatGPT 遥控版", systemImage: "power")
+                Label("语音：按住说话，松开结束", systemImage: "mic")
+            }
+            .font(.subheadline)
+            .fixedSize(horizontal: false, vertical: true)
+
+            Text("语音需在 ChatGPT 中将 ACT10 设置为对应的语音操作。")
+                .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Button("恢复默认键位") { showsRestoreConfirmation = true }
-                .buttonStyle(.bordered)
+            Text("可在未连接时设置，保存后生效。具体按键功能由 ChatGPT 决定。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             Spacer(minLength: 0)
+
+            HStack {
+                Spacer()
+                Button("恢复默认设置") { showsRestoreConfirmation = true }
+            }
+                .buttonStyle(.bordered)
         }
         .padding(20)
         .frame(minHeight: 300, alignment: .topLeading)
         .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 14))
     }
 
-    private func bindingEditorSheet(for keyID: String) -> some View {
+    private func bindingEditorSheet(for session: BindingEditorSession) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
-                Text(remoteKeyTitle(keyID)).font(.title3.weight(.semibold))
-                HStack(spacing: 8) {
-                    Text("当前绑定").foregroundStyle(.secondary)
-                    Text(bindingTitle(binding(for: keyID))).fontWeight(.semibold)
-                    if let detail = bindingDetail(binding(for: keyID)) {
-                        Text(detail).font(.caption.monospaced()).foregroundStyle(.secondary)
+                HStack {
+                    Text(remoteKeyTitle(session.id)).font(.title3.weight(.semibold))
+                    Spacer()
+                    Button { editingSession = nil } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .keyboardShortcut(.cancelAction)
+                    .accessibilityLabel("关闭，不保存更改")
+                    .help("关闭，不保存更改")
                 }
-                .font(.subheadline)
+                Text(Self.currentBindingDescription(session.originalBinding))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(16)
 
             Divider()
 
-            codexPanel
+            codexPanel(session: session)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
-                .frame(maxHeight: .infinity, alignment: .top)
 
             Divider()
 
             HStack {
-                Button("取消") { editingSession = nil }
-                    .keyboardShortcut(.cancelAction)
+                Button("清除绑定") { session.binding = nil }
+                    .disabled(session.isVoiceLocked || session.binding == nil)
                 Spacer()
-                Button("保存更改", action: save)
+                Button("保存更改") { save(session: session) }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(editingBinding == binding(for: keyID))
+                    .disabled(!session.hasChanges || session.isVoiceLocked)
             }
             .padding(16)
         }
-        .frame(width: 320, height: isVoiceLocked ? 524 : 500)
+        .frame(width: 320)
+        .fixedSize(horizontal: false, vertical: true)
         .confirmationDialog("这个键位已经被占用", isPresented: Binding(
-            get: { pendingTarget != nil },
-            set: { if !$0 { pendingTarget = nil } }
+            get: { session.pendingBinding != nil },
+            set: { if !$0 { session.pendingBinding = nil } }
         )) {
             Button("仍然绑定") {
-                editingBinding = pendingTarget?.binding
-                pendingTarget = nil
+                session.binding = session.pendingBinding
+                session.pendingBinding = nil
             }
-            Button("取消", role: .cancel) { pendingTarget = nil }
+            Button("取消", role: .cancel) { session.pendingBinding = nil }
         } message: {
-            if let pendingTarget {
-                Text("\(pendingTarget.title) 已绑定到\(owners(of: pendingTarget.binding).joined(separator: "、"))。允许多个遥控器按键使用同一个目标。")
+            if let pending = session.pendingBinding {
+                Text("\(bindingTitle(pending)) 已绑定到\(owners(of: pending, excluding: session.id).joined(separator: "、"))。允许多个遥控器按键使用同一个目标。")
             }
         }
     }
@@ -337,66 +370,59 @@ struct KeyMappingPage: View {
         }
     }
 
-    private var codexPanel: some View {
+    private func codexPanel(session: BindingEditorSession) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Codex Micro").font(.headline)
-            Text("旋钮、摇杆点击展开操作菜单。")
+            Text("选择对应按键。点击旋钮或摇杆，可展开更多选项。")
                 .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
-            if isVoiceLocked {
-                Label("语音键固定为按住说话", systemImage: "lock.fill")
+            if session.isVoiceLocked {
+                Label("语音键固定 ACT10，按住开启麦克风", systemImage: "lock.fill")
                     .font(.caption)
                     .foregroundStyle(Color.accentColor)
+                    .help("不可修改或清除绑定。松开关闭遥控器麦克风；ACT10 在 ChatGPT 中的行为由其配置决定。")
             }
 
-            microImagePanel
+            microImagePanel(session: session)
                 .frame(maxWidth: .infinity, alignment: .center)
 
-            Button {
-                editingBinding = nil
-            } label: {
-                Label("取消绑定", systemImage: "nosign")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .tint(currentBinding == nil ? Color.accentColor : Color.secondary)
-            .disabled(isVoiceLocked)
         }
         .padding(12)
         .background(Color.black.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private var microImagePanel: some View {
+    private func microImagePanel(session: BindingEditorSession) -> some View {
         GeometryReader { geometry in
             let scale = geometry.size.width / 480
             ZStack(alignment: .topLeading) {
                 microProductImage.resizable().interpolation(.high)
                     .aspectRatio(contentMode: .fit)
 
-                controlMenu("旋钮", targets: Array(Self.controlTargets.prefix(3)), joystick: false)
+                controlMenu("旋钮", targets: Array(Self.controlTargets.prefix(3)), joystick: false, session: session)
                     .frame(width: 94 * scale, height: 94 * scale)
                     .position(x: 73 * scale, y: 74 * scale)
-                controlMenu("摇杆", targets: Array(Self.controlTargets.dropFirst(3)), joystick: true)
+                controlMenu("摇杆", targets: Array(Self.controlTargets.dropFirst(3)), joystick: true, session: session)
                     .frame(width: 94 * scale, height: 94 * scale)
                     .position(x: 407 * scale, y: 75 * scale)
 
                 ForEach(Array(Self.agentTargets.enumerated()), id: \.element.id) { index, target in
                     let firstRow = index < 2
                     let column = firstRow ? index + 1 : index - 2
-                    targetButton(target)
+                    targetButton(target, session: session)
                         .frame(width: 102 * scale, height: 102 * scale)
                         .position(x: CGFloat(73 + column * 111) * scale,
                                   y: CGFloat(firstRow ? 74 : 185) * scale)
                 }
                 ForEach(Array(Self.actionTargets.prefix(4).enumerated()), id: \.element.id) { index, target in
-                    targetButton(target)
+                    targetButton(target, session: session)
                         .frame(width: 102 * scale, height: 102 * scale)
                         .position(x: CGFloat(73 + index * 111) * scale, y: 296 * scale)
                 }
-                targetButton(Self.actionTargets[4])
+                targetButton(Self.actionTargets[4], session: session)
                     .frame(width: 212 * scale, height: 102 * scale)
                     .position(x: 239.5 * scale, y: 407 * scale)
-                targetButton(Self.actionTargets[5])
+                targetButton(Self.actionTargets[5], session: session)
                     .frame(width: 102 * scale, height: 102 * scale)
                     .position(x: 407 * scale, y: 407 * scale)
             }
@@ -412,14 +438,14 @@ struct KeyMappingPage: View {
         return Image(nsImage: image)
     }
 
-    private func controlMenu(_ title: String, targets: [BindingTarget], joystick: Bool) -> some View {
-        let selected = targets.contains { $0.binding == currentBinding }
+    private func controlMenu(_ title: String, targets: [BindingTarget], joystick: Bool, session: BindingEditorSession) -> some View {
+        let selected = targets.contains { $0.binding == session.binding }
         return Menu {
             ForEach(targets) { target in
                 Button {
-                    chooseTarget(target)
+                    chooseTarget(target, session: session)
                 } label: {
-                    Label(target.title, systemImage: currentBinding == target.binding ? "checkmark" : target.symbol)
+                    Label("\(target.title) · \(target.detail)", systemImage: session.binding == target.binding ? "checkmark" : target.symbol)
                 }
             }
         } label: {
@@ -450,10 +476,10 @@ struct KeyMappingPage: View {
                     .allowsHitTesting(false)
             }
         }
-        .disabled(isVoiceLocked)
-        .help(selected ? "\(title) · \(bindingTitle(currentBinding))" : "\(title) · 点击选择操作")
+        .disabled(session.isVoiceLocked)
+        .help(selected ? "\(title) · \(bindingTitle(session.binding))" : "\(title) · 点击选择操作")
         .accessibilityLabel(title)
-        .accessibilityValue(selected ? "已选择：\(bindingTitle(currentBinding))" : "未选择")
+        .accessibilityValue(selected ? "已选择：\(bindingTitle(session.binding))" : "未选择")
     }
 
     private var remoteProductImage: Image {
@@ -465,10 +491,17 @@ struct KeyMappingPage: View {
     }
 
     private func remoteHotspot(_ keyID: String) -> some View {
-        let configured = binding(for: keyID) != nil
+        let configured = keyID == "power" || binding(for: keyID) != nil
         let outline = RemoteKeyOutlineShape(keyID: keyID)
         return Button {
-            pendingTarget = nil
+            if keyID == "power" {
+                let alert = NSAlert()
+                alert.messageText = "打开 ChatGPT 遥控版"
+                alert.informativeText = "Power 是固定启动键，不参与 Micro 映射。按遥控器 Power 键会自动设置并打开遥控版；首次使用会请求确认退出普通版 ChatGPT。"
+                alert.addButton(withTitle: "好")
+                alert.runModal()
+                return
+            }
             editingSession = BindingEditorSession(id: keyID, binding: binding(for: keyID))
         } label: {
             outline
@@ -482,14 +515,14 @@ struct KeyMappingPage: View {
         ))
         .frame(width: Self.remoteDisplaySize.width, height: Self.remoteDisplaySize.height)
         .offset(y: -1)
-        .help("\(remoteKeyTitle(keyID)) · \(bindingTitle(binding(for: keyID)))")
-        .accessibilityLabel("\(remoteKeyTitle(keyID))，\(bindingTitle(binding(for: keyID)))")
+        .help(keyID == "power" ? "Power · 打开 ChatGPT 遥控版（固定）" : "\(remoteKeyTitle(keyID)) · \(bindingTitle(binding(for: keyID)))")
+        .accessibilityLabel(keyID == "power" ? "Power，打开 ChatGPT 遥控版，固定" : "\(remoteKeyTitle(keyID))，\(bindingTitle(binding(for: keyID)))")
     }
 
-    private func targetButton(_ target: BindingTarget) -> some View {
-        let selected = currentBinding == target.binding
+    private func targetButton(_ target: BindingTarget, session: BindingEditorSession) -> some View {
+        let selected = session.binding == target.binding
         return Button {
-            chooseTarget(target)
+            chooseTarget(target, session: session)
         } label: {
             RoundedRectangle(cornerRadius: 10)
                 .fill(selected ? Color.accentColor.opacity(0.15) : Color.clear)
@@ -500,31 +533,32 @@ struct KeyMappingPage: View {
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
-        .disabled(isVoiceLocked)
-        .help("\(target.title) · \(target.detail)\(owners(of: target.binding).isEmpty ? "" : " · 已绑定：" + owners(of: target.binding).joined(separator: "、"))")
+        .disabled(session.isVoiceLocked)
+        .help("\(target.title) · \(target.detail)\(owners(of: target.binding, excluding: session.id).isEmpty ? "" : " · 已绑定：" + owners(of: target.binding, excluding: session.id).joined(separator: "、"))")
         .accessibilityLabel(target.title)
         .accessibilityValue(selected ? "已选择" : "未选择")
     }
 
-    private func chooseTarget(_ target: BindingTarget) {
-        guard !isVoiceLocked else { return }
-        if owners(of: target.binding).isEmpty || currentBinding == target.binding {
-            editingBinding = target.binding
+    private func chooseTarget(_ target: BindingTarget, session: BindingEditorSession) {
+        guard !session.isVoiceLocked else { return }
+        if owners(of: target.binding, excluding: session.id).isEmpty || session.binding == target.binding {
+            session.binding = target.binding
         } else {
-            pendingTarget = target
+            session.pendingBinding = target.binding
         }
     }
 
-    private var currentBinding: XiaomiBinding? { editingBinding }
-    private var isVoiceLocked: Bool { selectedKey == "voice" }
-    private var boundCount: Int { Self.remoteKeys.filter { binding(for: $0.id) != nil }.count }
+    private var configurableKeys: [RemoteKey] {
+        Self.remoteKeys.filter { $0.id != "power" && $0.id != "voice" }
+    }
+    private var boundCount: Int { configurableKeys.filter { binding(for: $0.id) != nil }.count }
 
     private func binding(for key: String) -> XiaomiBinding? {
         guard let stored = state.keyMapping[key] else { return nil }
         return stored
     }
 
-    private func owners(of binding: XiaomiBinding) -> [String] {
+    private func owners(of binding: XiaomiBinding, excluding selectedKey: String) -> [String] {
         Self.remoteKeys.compactMap { key in
             guard key.id != selectedKey, self.binding(for: key.id) == binding else { return nil }
             return key.title
@@ -532,25 +566,55 @@ struct KeyMappingPage: View {
     }
 
     private func remoteKeyTitle(_ id: String) -> String {
-        Self.remoteKeys.first(where: { $0.id == id })?.title ?? id
+        Self.remoteButtonTitle(id)
+    }
+
+    static func remoteButtonTitle(_ id: String) -> String {
+        switch id {
+        case "up": return "上方向键"
+        case "down": return "下方向键"
+        case "left": return "左方向键"
+        case "right": return "右方向键"
+        case "ok": return "确认键"
+        case "power": return "Power 启动键"
+        default: return (Self.remoteKeys.first(where: { $0.id == id })?.title ?? id) + "键"
+        }
+    }
+
+    static func currentBindingDescription(_ binding: XiaomiBinding?) -> String {
+        guard let binding else { return "对应按键：未设置" }
+        if let keycode = binding.keycode {
+            let suffix: String
+            switch keycode {
+            case "ENC_CC": suffix = "逆时针旋钮"
+            case "ENC_CW": suffix = "顺时针旋钮"
+            case "ENC_CLK": suffix = "旋钮按压"
+            default: suffix = "键位"
+            }
+            return "对应按键：Codex Micro \(keycode) \(suffix)"
+        }
+        if let target = Self.controlTargets.first(where: { $0.binding == binding }) {
+            return "对应按键：Codex Micro \(target.id) \(target.title)"
+        }
+        return "对应按键：Codex Micro 摇杆"
     }
 
     private func bindingTitle(_ binding: XiaomiBinding?) -> String {
+        Self.bindingLabel(binding)
+    }
+
+    static func bindingLabel(_ binding: XiaomiBinding?) -> String {
         guard let binding else { return "未绑定" }
+        if let keycode = binding.keycode { return keycode }
         return (Self.controlTargets + Self.agentTargets + Self.actionTargets)
-            .first(where: { $0.binding == binding })?.title ?? binding.keycode ?? "摇杆"
+            .first(where: { $0.binding == binding })?.title ?? "摇杆"
     }
 
-    private func bindingDetail(_ binding: XiaomiBinding?) -> String? {
-        guard let binding else { return nil }
-        return (Self.controlTargets + Self.agentTargets + Self.actionTargets)
-            .first(where: { $0.binding == binding })?.detail
-    }
-
-    private func save() {
+    private func save(session: BindingEditorSession) {
+        guard session.hasChanges, !session.isVoiceLocked else { return }
         do {
             var updated = state.keyMapping
-            updated.updateValue(editingBinding, forKey: selectedKey)
+            updated.updateValue(session.binding, forKey: session.id)
             try state.saveKeyMapping(updated)
             editingSession = nil
         } catch {

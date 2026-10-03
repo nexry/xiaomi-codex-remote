@@ -2,6 +2,33 @@ import XCTest
 @testable import XiaomiCodexRemote
 
 final class RuntimeSetupTests: XCTestCase {
+    func testPowerPreparationStopsHostBeforeGeneratingCopy() throws {
+        var events: [String] = []
+        var ready = false
+        try RemoteLaunchPreparation.run(
+            stopHost: { events.append("stop") },
+            inspect: { ready ? .ready(version: "1") : .needsPreparation(sourceVersion: "1") },
+            prepare: { events.append("prepare"); ready = true }
+        )
+        XCTAssertEqual(events, ["stop", "prepare"])
+    }
+
+    func testPowerPreparationSkipsReadyCopyAndAbortsWhenExitFails() throws {
+        var prepared = false
+        try RemoteLaunchPreparation.run(stopHost: {}, inspect: { .ready(version: "1") }, prepare: { prepared = true })
+        XCTAssertFalse(prepared)
+        XCTAssertThrowsError(try RemoteLaunchPreparation.run(
+            stopHost: { throw ChatGPTCompatibilityError.commandFailed("exit failed") },
+            inspect: { .needsUpdate(installedVersion: "1", sourceVersion: "2") },
+            prepare: { prepared = true }
+        ))
+        XCTAssertFalse(prepared)
+        XCTAssertThrowsError(try RemoteLaunchPreparation.run(
+            stopHost: { XCTFail("Missing host must not exit applications") },
+            inspect: { .sourceMissing }, prepare: { XCTFail("Missing host must not prepare") }
+        ))
+    }
+
     func testBundledShimDoesNotNeedRepository() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -44,7 +71,7 @@ final class RuntimeSetupTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let official = root.appendingPathComponent("ChatGPT.app")
-        let patched = root.appendingPathComponent("Applications/ChatGPT-Patched.app")
+        let patched = root.appendingPathComponent("Applications/ChatGPT-for-XiaomiRemote.app")
         let resources = root.appendingPathComponent("ProductResources")
         try makeFakeChatGPT(at: official, version: "200", nodeOptions: 48)
         try FileManager.default.createDirectory(at: resources.appendingPathComponent("shim"), withIntermediateDirectories: true)
@@ -76,7 +103,7 @@ final class RuntimeSetupTests: XCTestCase {
             in: patched.appendingPathComponent(ChatGPTShimConfiguration.frameworkRelativePath)
         ))
         let info = try XCTUnwrap(readPlist(at: patched.appendingPathComponent("Contents/Info.plist")))
-        XCTAssertEqual(info["CFBundleDisplayName"] as? String, "ChatGPT Shim")
+        XCTAssertEqual(info["CFBundleDisplayName"] as? String, "ChatGPT 遥控版")
         let environment = try XCTUnwrap(info["LSEnvironment"] as? [String: String])
         XCTAssertEqual(environment["CODEX_MICRO_SOCKET"], ChatGPTShimConfiguration.socketPath)
         XCTAssertTrue(environment["NODE_OPTIONS"]?.contains("XiaomiCodexRemoteShim/preload.cjs") == true)
@@ -88,13 +115,18 @@ final class RuntimeSetupTests: XCTestCase {
         let copying = try XCTUnwrap(commands.first(where: { $0.0 == "/usr/bin/ditto" }))
         XCTAssertTrue(copying.1.contains("--noextattr"))
         XCTAssertTrue(copying.1.contains("--noqtn"))
+        var legacyInfo = info
+        legacyInfo["CFBundleDisplayName"] = "ChatGPT Shim"
+        let legacyData = try PropertyListSerialization.data(fromPropertyList: legacyInfo, format: .xml, options: 0)
+        try legacyData.write(to: patched.appendingPathComponent("Contents/Info.plist"))
+        XCTAssertEqual(manager.inspect(), .needsRepair(reason: "请重新设置遥控支持，将原有副本更新为「ChatGPT 遥控版」。"))
     }
 
     func testCompatibilityManagerReportsOutdatedAndBrokenCopies() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let official = root.appendingPathComponent("ChatGPT.app")
-        let patched = root.appendingPathComponent("Applications/ChatGPT-Patched.app")
+        let patched = root.appendingPathComponent("Applications/ChatGPT-for-XiaomiRemote.app")
         try makeFakeChatGPT(at: official, version: "300", nodeOptions: 48)
         try makeFakeChatGPT(at: patched, version: "299", nodeOptions: 49)
         let manager = ChatGPTCompatibilityManager(

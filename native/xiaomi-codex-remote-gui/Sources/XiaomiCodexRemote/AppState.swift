@@ -45,6 +45,7 @@ final class AppState {
     var logLines: [LogLine] = []
     private var logCounter: UInt64 = 0
     private let maxLogLines = 500
+    private var powerCommandHandling = false
 
     init() {
         bluetoothBridge = XiaomiBluetoothBridge(audioOutput: audioOutput)
@@ -114,7 +115,7 @@ final class AppState {
         bridge.onShimConnectionChange = { [weak self] connected in
             self?.chatGPTLauncher.shimConnectionChanged(connected)
             if connected {
-                self?.appendLog(source: "chatgpt", text: "ChatGPT Shim 已连接，兼容副本注入成功")
+                self?.appendLog(source: "chatgpt", text: "ChatGPT 已连接，遥控支持已就绪")
             }
         }
     }
@@ -247,19 +248,32 @@ final class AppState {
     }
 
     func launchChatGPT() {
+        guard !chatGPTLauncher.powerLaunchInProgress else { return }
         guard bridge.state == .running else {
             appendLog(source: "chatgpt", text: "请先启动桥接服务")
             return
         }
         guard case .ready = chatGPTLauncher.compatibilityState else {
-            appendLog(source: "chatgpt", text: "请先准备或修复 ChatGPT 兼容副本")
+            appendLog(source: "chatgpt", text: "请先准备或修复遥控支持")
             return
         }
-        appendLog(source: "chatgpt", text: "正在启动 ChatGPT...")
+        if chatGPTLauncher.launchState != .connected,
+           NSRunningApplication.runningApplications(
+               withBundleIdentifier: ChatGPTShimConfiguration.bundleIdentifier
+           ).contains(where: { !$0.isTerminated }) {
+            let alert = NSAlert()
+            alert.messageText = "打开 ChatGPT 遥控版？"
+            alert.informativeText = "需要先退出当前正在运行的 ChatGPT，再打开遥控版。请先保存正在进行的工作。"
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "退出并打开遥控版")
+            alert.addButton(withTitle: "取消")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
+        appendLog(source: "chatgpt", text: "正在打开 ChatGPT 遥控版...")
         chatGPTLauncher.launch(socketPath: bridge.socketPath) { [weak self] result in
             switch result {
             case .success:
-                self?.appendLog(source: "chatgpt", text: "ChatGPT 已打开，正在等待 Shim 连接")
+                self?.appendLog(source: "chatgpt", text: "ChatGPT 已打开，正在等待 ChatGPT 连接")
             case let .failure(error):
                 self?.appendLog(source: "chatgpt", text: "ChatGPT 启动失败：\(error.localizedDescription)")
             }
@@ -267,20 +281,50 @@ final class AppState {
     }
 
     func prepareChatGPTCompatibility() {
-        appendLog(source: "chatgpt", text: "正在准备 ChatGPT 兼容副本，这可能需要一些时间...")
+        appendLog(source: "chatgpt", text: "正在设置遥控支持，这可能需要一些时间...")
         chatGPTLauncher.prepareCompatibility { [weak self] result in
             switch result {
             case .success:
-                self?.appendLog(source: "chatgpt", text: "ChatGPT 兼容副本已准备完成")
+                self?.appendLog(source: "chatgpt", text: "ChatGPT 遥控版已准备完成")
             case let .failure(error):
-                self?.appendLog(source: "chatgpt", text: "兼容副本准备失败：\(error.localizedDescription)")
+                self?.appendLog(source: "chatgpt", text: "遥控版准备失败：\(error.localizedDescription)")
             }
         }
     }
 
     func revealChatGPTDockEntry() {
         chatGPTLauncher.revealDockEntry()
-        appendLog(source: "chatgpt", text: "已在 Finder 中显示 ChatGPT Shim，可将它拖到 Dock")
+        appendLog(source: "chatgpt", text: "已在 Finder 中显示 ChatGPT 遥控版，可将它拖到 Dock")
+    }
+
+    func openChatGPTFromPower() {
+        guard !powerCommandHandling, !chatGPTLauncher.powerLaunchInProgress,
+              chatGPTLauncher.compatibilityState != .preparing,
+              chatGPTLauncher.launchState != .launching,
+              chatGPTLauncher.launchState != .waitingForShim else { return }
+        powerCommandHandling = true
+        defer { powerCommandHandling = false }
+        if !UserDefaults.standard.bool(forKey: AppPreferences.powerLaunchConsentKey) {
+            let alert = NSAlert()
+            alert.messageText = "使用 Power 键打开 ChatGPT 遥控版？"
+            alert.informativeText = "以后按遥控器 Power 键，会正常退出当前 ChatGPT，自动设置或更新遥控支持，然后打开遥控版。不会强制退出或修改原版。请先保存正在进行的工作。"
+            alert.addButton(withTitle: "启用并打开")
+            alert.addButton(withTitle: "取消")
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            UserDefaults.standard.set(true, forKey: AppPreferences.powerLaunchConsentKey)
+        }
+        if bridge.state != .running { bridge.start() }
+        guard bridge.state == .running else {
+            appendLog(source: "chatgpt", text: "连接服务启动失败，未打开 ChatGPT 遥控版")
+            return
+        }
+        appendLog(source: "chatgpt", text: "Power：正在设置并打开 ChatGPT 遥控版")
+        chatGPTLauncher.launchFromPower(socketPath: bridge.socketPath) { [weak self] result in
+            if case let .failure(error) = result {
+                self?.appendLog(source: "chatgpt", text: "Power 启动失败：\(error.localizedDescription)")
+            }
+        }
     }
 
     func installDriver() {
@@ -318,6 +362,10 @@ final class AppState {
     private func handleButton(key: String, action: String) {
         print("[BUTTON] \(key) \(action)")
         appendLog(source: "button", text: "\(key) \(action)")
+        if key == "power" {
+            if action == "press" { openChatGPTFromPower() }
+            return
+        }
 
         // Voice microphone coordination
         if key == "voice" {

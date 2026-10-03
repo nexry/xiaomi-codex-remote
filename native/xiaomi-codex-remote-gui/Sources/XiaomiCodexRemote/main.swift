@@ -95,11 +95,11 @@ final class XiaomiCodexRemoteAppDelegate: NSObject, NSApplicationDelegate {
         remoteStatusValue = remoteStatusItem.valueLabel
         menu.addItem(remoteStatusItem.item)
 
-        let bridgeStatusItem = makeStatusMenuItem(title: "桥接服务")
+        let bridgeStatusItem = makeStatusMenuItem(title: "遥控连接服务")
         bridgeStatusValue = bridgeStatusItem.valueLabel
         menu.addItem(bridgeStatusItem.item)
 
-        let shimStatusItem = makeStatusMenuItem(title: "ChatGPT Shim")
+        let shimStatusItem = makeStatusMenuItem(title: "ChatGPT")
         shimStatusValue = shimStatusItem.valueLabel
         menu.addItem(shimStatusItem.item)
 
@@ -109,12 +109,12 @@ final class XiaomiCodexRemoteAppDelegate: NSObject, NSApplicationDelegate {
         showItem.target = self
         menu.addItem(showItem)
 
-        launchChatGPTItem = NSMenuItem(title: "打开 ChatGPT Shim…", action: #selector(launchChatGPT), keyEquivalent: "")
+        launchChatGPTItem = NSMenuItem(title: "打开 ChatGPT 遥控版…", action: #selector(launchChatGPT), keyEquivalent: "")
         launchChatGPTItem.target = self
         menu.addItem(launchChatGPTItem)
 
         // Bridge controls
-        bridgeActionItem = NSMenuItem(title: "重启桥接服务", action: #selector(restartBridge), keyEquivalent: "r")
+        bridgeActionItem = NSMenuItem(title: "重启连接服务", action: #selector(restartBridge), keyEquivalent: "r")
         bridgeActionItem.target = self
         menu.addItem(bridgeActionItem)
 
@@ -159,19 +159,19 @@ final class XiaomiCodexRemoteAppDelegate: NSObject, NSApplicationDelegate {
         switch appState.bridge.state {
         case .stopped:
             bridgeStatusValue.stringValue = "未运行"
-            bridgeActionItem.title = "启动桥接服务"
+            bridgeActionItem.title = "启动连接服务"
             bridgeActionItem.isEnabled = true
         case .starting:
             bridgeStatusValue.stringValue = "正在启动"
-            bridgeActionItem.title = "正在启动桥接服务…"
+            bridgeActionItem.title = "正在启动连接服务…"
             bridgeActionItem.isEnabled = false
         case .running:
             bridgeStatusValue.stringValue = "正常"
-            bridgeActionItem.title = "重启桥接服务"
+            bridgeActionItem.title = "重启连接服务"
             bridgeActionItem.isEnabled = true
         case .failed:
             bridgeStatusValue.stringValue = "异常"
-            bridgeActionItem.title = "启动桥接服务"
+            bridgeActionItem.title = "重启连接服务"
             bridgeActionItem.isEnabled = true
         }
 
@@ -183,7 +183,7 @@ final class XiaomiCodexRemoteAppDelegate: NSObject, NSApplicationDelegate {
             compatibilityReady = false
         }
         shimStatusValue.stringValue = shimConnected ? "已连接" : "未连接"
-        launchChatGPTItem.title = shimConnected ? "ChatGPT Shim 已连接" : "打开 ChatGPT Shim…"
+        launchChatGPTItem.title = shimConnected ? "ChatGPT 遥控版 已连接" : "打开 ChatGPT 遥控版…"
         launchChatGPTItem.isEnabled = appState.bridge.state == .running
             && !shimConnected
             && compatibilityReady
