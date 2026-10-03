@@ -26,7 +26,7 @@ stdin / 外部 JSONL IPC
   → shim
 ```
 
-真实 RC003 的原始输入由原生应用负责。Node 输入源只接收标准化的逻辑事件，不直接打开遥控器 HID。
+真实 RC003 的原始输入由原生应用负责，GUI 直接使用内置原生桥接，不依赖 Node CLI，也不自动向 CLI IPC 转发事件。Node 的 `stdin` 接收模拟 JSONL，`ipc`（别名 `miremote`、`sayall`）在 `/tmp/xiaomi-remote-events.sock` 监听外部进程发送的标准化逻辑事件，不直接打开遥控器 HID。该输入 socket 与发往 shim 的 Codex 协议 socket 不同。Node 的 `ble` 输入源仍为占位实现，会明确报告不支持；不能与 GUI 的 BLE 语音实现混淆。
 
 ## ChatGPT 兼容副本
 
@@ -45,14 +45,16 @@ GUI 以 `CFBundleVersion` 区分需要准备和需要更新，以 bundle 内容�
 
 ## 输入源契约
 
-输入源继承 `EventEmitter`，并实现异步 `start()` / `stop()`：
+Node 输入源继承 `EventEmitter`，并实现异步 `start()` / `stop()`；后端处理以下事件，但各输入源并不保证发出全部事件：
 
 - `key`：`{key: string, action: "press"|"release"|"repeat"}`；
 - `disconnect`：上游输入断连，后端释放全部按住的键；
 - `error`：后端释放按键并把错误交给调用方；
-- `end`：输入结束，后端释放按键并关闭 CLI。
+- `end`：`stdin` 在 EOF 时发送，后端释放按键并关闭 CLI；IPC 客户端断开发送的是 `disconnect`，不能据此假定 CLI 会退出。
 
 普通按键使用配对的 `press` / `release`。`act: 2` 只用于编码器旋转，不用于普通 HID 自动重复。连接真实 transport 时复用现有 `Link` 和 framing，不复制协议实现。
+
+GUI 将语音键固定为 ACT10，加载保存配置时也会恢复该绑定；Node CLI 的配置仍允许覆盖或禁用语音键。两条路径默认都将方向键映射到摇杆事件，但 `config/xiaomi.example.json` 显式禁用了四个方向键，加载示例时需注意这一覆盖行为。
 
 ## 本地开发
 
@@ -79,6 +81,12 @@ bash native/xiaomi-codex-remote-gui/bundle-app.sh
 PATH=/usr/bin:/bin "native/xiaomi-codex-remote-gui/Xiaomi Codex Remote.app/Contents/MacOS/Xiaomi Codex Remote" --check-runtime
 ```
 
+Swift 包声明工具版本为 5.9；完整应用打包还需要支持当前 Icon Composer `.icon` 资源的 Xcode `actool`。`bundle-app.sh` 自行构建 release 二进制，`RELEASE_UNIVERSAL=1` 可生成 arm64 / x86_64 通用包。脚本根据 `package.json` 写入应用版本，使用 ad-hoc 签名，不执行正式签名或公证；公开分发建议另外完成这两项。
+
+v0.3.0 发布附件不内置音频驱动。源码打包时，脚本会复制已有的 `native/XiaomiCodexRemoteAudio/MiCodexRemote2ch.driver`；不能假定所有本地打包结果都不含驱动。驱动构建脚本下载并修改 BlackHole v0.7.1，第三方源码适用其独立的 [GPLv3 许可](https://github.com/ExistentialAudio/BlackHole/blob/v0.7.1/LICENSE)，不是本项目 MIT 许可覆盖的代码。
+
+`shim/patch-app.sh` 和 `shim/launch-chatgpt.sh` 是需要 Node.js 的开发回退方式，检查能力不等同于原生 GUI。启动脚本会尝试退出正在运行的 ChatGPT；运行前需保存工作，并明确指定已准备的兼容副本。不要把这些脚本作为无需确认的测试步骤。
+
 ## 变更边界
 
 - 只根据真实捕获数据与 fixture 实现 RC003 专有行为；
@@ -92,7 +100,7 @@ PATH=/usr/bin:/bin "native/xiaomi-codex-remote-gui/Xiaomi Codex Remote.app/Conte
 
 ## 验证层次
 
-自动化验证只覆盖模拟输入、协议、framing、IPC 与 shim 行为。历史开发环境有按键和语音的真机验证记录，但 v0.3.0 新默认 OK → ACT12 仍需宿主真机验收，最近日志中的「BLE 语音特征尚未就绪」也尚未修复。发布与兼容性维护需分别记录：
+自动化验证覆盖模拟输入、协议、framing、IPC 与 shim 行为，不能替代真机验收。历史开发环境有按键和语音的真机验证记录，但 v0.3.0 新默认 OK → ACT12 仍需宿主真机验收。语音使用前需授予所需系统权限，并准备兼容的虚拟音频设备。发布与兼容性维护需分别记录：
 
 1. RC003 每个按键的 press/release/旋转行为及录制时的实际界面效果；
 2. 持键时断连、重新连接与退出清理；
