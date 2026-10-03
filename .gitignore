@@ -17,6 +17,8 @@ native/XiaomiCodexRemoteAudio/MiCodexRemote2ch.driver/
 
 # Compiled native helpers and caches
 native/CodexMicroVirtualHID/CodexMicroVirtualHID
+native/rc003-capture/rc003-capture
+release-artifacts/
 
 # Runtime and OS files
 *.log

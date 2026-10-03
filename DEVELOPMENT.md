@@ -92,7 +92,7 @@ PATH=/usr/bin:/bin "native/xiaomi-codex-remote-gui/Xiaomi Codex Remote.app/Conte
 
 ## 验证层次
 
-自动化验证只覆盖模拟输入、协议、framing、IPC 与 shim 行为。当前开发环境已完成默认按键和 RC003 麦克风到 ChatGPT 听写的端到端真机验证。发布与兼容性维护仍需分别记录：
+自动化验证只覆盖模拟输入、协议、framing、IPC 与 shim 行为。历史开发环境有按键和语音的真机验证记录，但 v0.3.0 新默认 OK → ACT12 仍需宿主真机验收，最近日志中的「BLE 语音特征尚未就绪」也尚未修复。发布与兼容性维护需分别记录：
 
 1. RC003 每个按键的 press/release/旋转行为及录制时的实际界面效果；
 2. 持键时断连、重新连接与退出清理；

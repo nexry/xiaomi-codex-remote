@@ -67,6 +67,11 @@ final class NativeCodexBridge {
 
     func restart() { stop(); start() }
     func releaseHeldKeys() { router.releaseAll() }
+    func applyKeyMapping(_ mapping: [String: XiaomiBinding?]) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        router.releaseAll()
+        router = XiaomiInputRouter(emulator: emulator, mapping: mapping)
+    }
     func handle(key: String, action: XiaomiKeyAction) {
         dispatchPrecondition(condition: .onQueue(.main))
         guard state == .running, shimConnected else { return }

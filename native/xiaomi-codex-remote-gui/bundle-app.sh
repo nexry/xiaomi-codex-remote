@@ -8,16 +8,37 @@ MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 ICON_SOURCE="$SCRIPT_DIR/../../assets/Xiao Codex Remote.icon"
 ICON_NAME="Xiao Codex Remote"
+REMOTE_IMAGE_SOURCE="$SCRIPT_DIR/Resources/XiaomiRemote.png"
 
 echo "Building release binary..."
 cd "$SCRIPT_DIR"
-swift build -c release --disable-keychain
+APP_VERSION="$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' "$SCRIPT_DIR/../../package.json" | head -n 1)"
+if [ -z "$APP_VERSION" ]; then
+  echo "Error: package.json does not specify an app version." >&2
+  exit 1
+fi
+BUILD_ARGS=(-c release --disable-keychain)
+if [ "${RELEASE_UNIVERSAL:-0}" = "1" ]; then
+  BUILD_ARGS+=(--arch arm64 --arch x86_64)
+fi
+swift build "${BUILD_ARGS[@]}"
+BINARY_PATH="$(swift build "${BUILD_ARGS[@]}" --show-bin-path)/XiaomiCodexRemote"
 
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
-cp "$SCRIPT_DIR/.build/release/XiaomiCodexRemote" "$MACOS_DIR/Xiaomi Codex Remote"
+cp "$BINARY_PATH" "$MACOS_DIR/Xiaomi Codex Remote"
 mkdir -p "$RESOURCES_DIR/shim"
 cp "$SCRIPT_DIR/../../shim/preload.cjs" "$RESOURCES_DIR/shim/preload.cjs"
 cp "$SCRIPT_DIR/../../shim/patch.cjs" "$RESOURCES_DIR/shim/patch.cjs"
+if [ ! -f "$REMOTE_IMAGE_SOURCE" ]; then
+  echo "Error: Xiaomi remote image not found: $REMOTE_IMAGE_SOURCE" >&2
+  exit 1
+fi
+cp "$REMOTE_IMAGE_SOURCE" "$RESOURCES_DIR/XiaomiRemote.png"
+# Desktop screenshots carry Finder metadata/resource-fork xattrs that make
+# codesign reject the otherwise valid app bundle. Clear only the bundled copy.
+xattr -c "$RESOURCES_DIR/XiaomiRemote.png"
+cp "$SCRIPT_DIR/Resources/CodexMicro.png" "$RESOURCES_DIR/CodexMicro.png"
+xattr -c "$RESOURCES_DIR/CodexMicro.png"
 
 # Bundle the virtual audio driver if it has been built
 DRIVER_SRC="$SCRIPT_DIR/../XiaomiCodexRemoteAudio/MiCodexRemote2ch.driver"
@@ -92,6 +113,9 @@ cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
 </dict>
 </plist>
 EOF
+
+/usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $APP_VERSION" "$CONTENTS_DIR/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $APP_VERSION" "$CONTENTS_DIR/Info.plist"
 
 echo "Signing app bundle (ad-hoc)..."
 codesign --force --sign - --timestamp=none "$APP_DIR"

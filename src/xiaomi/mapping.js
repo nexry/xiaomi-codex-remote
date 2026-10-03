@@ -5,7 +5,7 @@ export const DEFAULT_MAPPING = Object.freeze(Object.fromEntries(Object.entries({
   home: { kind: "key", keycode: Keys.AGENT[0] },
   menu: { kind: "key", keycode: Keys.AGENT[1] },
   back: { kind: "key", keycode: "ACT08" },
-  ok: { kind: "key", keycode: Keys.ENCODER_CLICK },
+  ok: { kind: "key", keycode: "ACT12" },
   voice: { kind: "key", keycode: "ACT10" },
   // Match upstream Stream Deck's reasoning-up direction (ENC_CC).
   volume_up: { kind: "rotate", keycode: Keys.ENCODER_CCW },

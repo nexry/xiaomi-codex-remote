@@ -9,11 +9,12 @@ struct MainWindow: View {
     @AppStorage(AppPreferences.hideDockIconKey) private var hideDockIcon = false
 
     private enum Page: String, CaseIterable, Identifiable {
-        case status, settings, permissions, logs
+        case status, keyMapping, settings, permissions, logs
         var id: Self { self }
         var title: String {
             switch self {
             case .status: return "状态与连接"
+            case .keyMapping: return "键位映射"
             case .settings: return "偏好设置"
             case .permissions: return "权限"
             case .logs: return "日志"
@@ -22,6 +23,7 @@ struct MainWindow: View {
         var icon: String {
             switch self {
             case .status: return "point.3.connected.trianglepath.dotted"
+            case .keyMapping: return "keyboard.badge.ellipsis"
             case .settings: return "gearshape"
             case .permissions: return "lock.shield"
             case .logs: return "stethoscope"
@@ -42,7 +44,7 @@ struct MainWindow: View {
             Divider()
             pageContent.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(minWidth: 800, idealWidth: 920, minHeight: 560, idealHeight: 640)
+        .frame(width: 800, height: 560)
         .onAppear { state.refreshPermissions() }
     }
 
@@ -70,7 +72,7 @@ struct MainWindow: View {
                         Image(systemName: page.icon).frame(width: 20)
                         Text(page.title)
                         Spacer(minLength: 0)
-                        if page != .settings {
+                        if page != .settings && page != .keyMapping {
                             Circle().fill(status(for: page).color).frame(width: 7, height: 7)
                         }
                     }
@@ -118,6 +120,13 @@ struct MainWindow: View {
                     .frame(maxWidth: .infinity)
                     .padding(28)
             }
+        case .keyMapping:
+            KeyMappingPage(state: state)
+                .frame(maxWidth: 750, alignment: .leading)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(.horizontal, 28)
+                .padding(.top, 28)
+                .clipped()
         case .permissions:
             ScrollView {
                 permissionsPage
@@ -174,22 +183,27 @@ struct MainWindow: View {
             VStack(alignment: .leading, spacing: 16) {
                 Text("通用").font(.headline)
 
-                Toggle(isOn: $hideDockIcon) {
+                HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("隐藏 Dock 图标")
                         Text("隐藏后仍可通过菜单栏图标打开应用。")
                             .font(.caption).foregroundStyle(.secondary)
                     }
-                }
-                .toggleStyle(.switch)
-                .onChange(of: hideDockIcon) { _, hidden in
-                    AppPreferences.applyDockIconVisibility(
-                        hidden: hidden,
-                        activateWhenVisible: true
-                    )
+                    Spacer()
+                    Toggle("隐藏 Dock 图标", isOn: $hideDockIcon)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .fixedSize()
+                        .onChange(of: hideDockIcon) { _, hidden in
+                            AppPreferences.applyDockIconVisibility(
+                                hidden: hidden,
+                                activateWhenVisible: true
+                            )
+                        }
                 }
             }
             .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
 
             VStack(alignment: .leading, spacing: 16) {
@@ -674,6 +688,7 @@ struct MainWindow: View {
     private func status(for page: Page) -> StatusCard.Status {
         switch page {
         case .status: return sidebarStatus
+        case .keyMapping: return .inactive("按键配置")
         case .settings: return .inactive("设置")
         case .permissions:
             return state.bluetoothAuthorization == .allowedAlways &&

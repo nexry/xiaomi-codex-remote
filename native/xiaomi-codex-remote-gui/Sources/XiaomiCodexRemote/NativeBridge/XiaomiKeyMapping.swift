@@ -28,12 +28,19 @@ enum XiaomiKeyMappingError: LocalizedError, Equatable {
 }
 
 struct XiaomiKeyMapping {
+    static let voiceBinding = XiaomiBinding(
+        kind: .key,
+        keycode: "ACT10",
+        agent: nil,
+        angle: nil
+    )
+
     static let defaults: [String: XiaomiBinding?] = [
         "home": .some(.init(kind: .key, keycode: "AG00", agent: 0, angle: nil)),
         "menu": .some(.init(kind: .key, keycode: "AG01", agent: 1, angle: nil)),
         "back": .some(.init(kind: .key, keycode: "ACT08", agent: nil, angle: nil)),
-        "ok": .some(.init(kind: .key, keycode: "ENC_CLK", agent: nil, angle: nil)),
-        "voice": .some(.init(kind: .key, keycode: "ACT10", agent: nil, angle: nil)),
+        "ok": .some(.init(kind: .key, keycode: "ACT12", agent: nil, angle: nil)),
+        "voice": .some(voiceBinding),
         "volume_up": .some(.init(kind: .rotate, keycode: "ENC_CC", agent: nil, angle: nil)),
         "volume_down": .some(.init(kind: .rotate, keycode: "ENC_CW", agent: nil, angle: nil)),
         "up": .some(.init(kind: .joystick, keycode: nil, agent: nil, angle: 0.75)),
@@ -41,6 +48,7 @@ struct XiaomiKeyMapping {
         "left": .some(.init(kind: .joystick, keycode: nil, agent: nil, angle: 0.5)),
         "right": .some(.init(kind: .joystick, keycode: nil, agent: nil, angle: 0.0)),
         "power": nil,
+        "tv": nil,
     ]
 
     static func make(overrides: [String: XiaomiBinding?]) throws -> [String: XiaomiBinding?] {
@@ -56,6 +64,9 @@ struct XiaomiKeyMapping {
         for (logicalKey, binding) in validated {
             result.updateValue(binding, forKey: logicalKey)
         }
+        // The physical voice button owns microphone open/close coordination,
+        // so its Codex target must stay paired with push-to-talk.
+        result.updateValue(voiceBinding, forKey: "voice")
         return result
     }
 

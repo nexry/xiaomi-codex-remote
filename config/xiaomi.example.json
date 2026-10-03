@@ -2,7 +2,7 @@
   "home": { "kind": "key", "keycode": "AG00" },
   "menu": { "kind": "key", "keycode": "AG01" },
   "back": { "kind": "key", "keycode": "ACT08" },
-  "ok": { "kind": "key", "keycode": "ENC_CLK" },
+  "ok": { "kind": "key", "keycode": "ACT12" },
   "voice": { "kind": "key", "keycode": "ACT10" },
   "volume_up": { "kind": "rotate", "keycode": "ENC_CC" },
   "volume_down": { "kind": "rotate", "keycode": "ENC_CW" },

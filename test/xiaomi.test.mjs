@@ -16,6 +16,7 @@ const event = (key, action) => ({ key, action });
 test("default mapping matches existing protocol, with unsupported directions disabled", () => {
   const mapping = createMapping();
   assert.deepEqual(resolveKey("home", mapping), { kind: "key", keycode: "AG00", agent: 0 });
+  assert.deepEqual(resolveKey("ok", mapping), { kind: "key", keycode: "ACT12", agent: null });
   assert.deepEqual(resolveKey("voice", mapping), { kind: "key", keycode: "ACT10", agent: null });
   assert.equal(resolveKey("volume_up", mapping).keycode, "ENC_CC");
   assert.deepEqual(resolveKey("up", mapping), { kind: "joystick", angle: 0.75, agent: null });
@@ -78,7 +79,7 @@ test("source lifecycle supports disconnect, stop, restart and listener cleanup",
   source.emit("key", event("voice", "press"));
   await backend.stop();
   await backend.stop();
-  assert.deepEqual(notes, [{ k: "ENC_CLK", act: 1 }, { k: "ENC_CLK", act: 0 }, { k: "ACT10", act: 1 }, { k: "ACT10", act: 0 }]);
+  assert.deepEqual(notes, [{ k: "ACT12", act: 1 }, { k: "ACT12", act: 0 }, { k: "ACT10", act: 1 }, { k: "ACT10", act: 0 }]);
   assert.equal(starts, 1);
   assert.equal(stops, 1);
   assert.equal(source.listenerCount("key"), 0);

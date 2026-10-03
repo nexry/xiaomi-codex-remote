@@ -29,6 +29,7 @@ final class AppState {
     var remoteBattery: Int?
     var remoteName: String?
     var hidStatus: HIDMonitorStatus = .stopped
+    var keyMapping: [String: XiaomiBinding?] = AppPreferences.keyMapping()
 
     // System permissions shown in the main window. Refresh when returning from Settings.
     var bluetoothAuthorization: CBManagerAuthorization = CBManager.authorization
@@ -47,6 +48,7 @@ final class AppState {
 
     init() {
         bluetoothBridge = XiaomiBluetoothBridge(audioOutput: audioOutput)
+        bridge.applyKeyMapping(keyMapping)
         setupSubsystems()
         refreshPermissions()
     }
@@ -294,6 +296,21 @@ final class AppState {
                 self.appendLog(source: "audio", text: "驱动安装失败: \(message)")
             }
         }
+    }
+
+    func saveKeyMapping(_ mapping: [String: XiaomiBinding?]) throws {
+        let validated = try XiaomiKeyMapping.make(overrides: mapping)
+        try AppPreferences.saveKeyMapping(validated)
+        bridge.applyKeyMapping(validated)
+        keyMapping = validated
+        appendLog(source: "app", text: "键位映射已更新")
+    }
+
+    func restoreDefaultKeyMapping() {
+        AppPreferences.resetKeyMapping()
+        bridge.applyKeyMapping(XiaomiKeyMapping.defaults)
+        keyMapping = XiaomiKeyMapping.defaults
+        appendLog(source: "app", text: "键位映射已恢复默认")
     }
 
     // MARK: - Button Handling

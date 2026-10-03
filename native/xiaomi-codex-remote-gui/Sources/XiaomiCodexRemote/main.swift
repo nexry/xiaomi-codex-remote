@@ -6,6 +6,11 @@ final class XiaomiCodexRemoteAppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var mainWindow: NSWindow?
     private var appState: AppState!
+    private var remoteStatusValue: NSTextField!
+    private var bridgeStatusValue: NSTextField!
+    private var shimStatusValue: NSTextField!
+    private var bridgeActionItem: NSMenuItem!
+    private var launchChatGPTItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("[Xiaomi Codex Remote] Starting Xiaomi Codex Remote...")
@@ -30,23 +35,21 @@ final class XiaomiCodexRemoteAppDelegate: NSObject, NSApplicationDelegate {
         let hostingView = NSHostingView(rootView: contentView)
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 920, height: 640),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 560),
+            styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.contentView = hostingView
         window.contentMinSize = NSSize(width: 800, height: 560)
+        window.contentMaxSize = NSSize(width: 800, height: 560)
         window.title = "Xiaomi Codex Remote"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.center()
         window.setFrameAutosaveName("XiaomiCodexRemoteMain")
-        // Older saved frames may be narrower than the two-column layout.
-        if window.contentLayoutRect.width < 800 || window.contentLayoutRect.height < 560 {
-            window.setContentSize(NSSize(width: max(window.contentLayoutRect.width, 800),
-                                         height: max(window.contentLayoutRect.height, 560)))
-        }
+        // Preserve the saved window position, but never restore an older size.
+        window.setContentSize(NSSize(width: 800, height: 560))
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.makeKeyAndOrderFront(nil)
@@ -86,21 +89,34 @@ final class XiaomiCodexRemoteAppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let menu = NSMenu()
+        menu.delegate = self
 
-        let showItem = NSMenuItem(title: "显示主窗口", action: #selector(showMainWindow), keyEquivalent: "")
-        showItem.target = self
-        menu.addItem(showItem)
+        let remoteStatusItem = makeStatusMenuItem(title: "小米遥控器")
+        remoteStatusValue = remoteStatusItem.valueLabel
+        menu.addItem(remoteStatusItem.item)
+
+        let bridgeStatusItem = makeStatusMenuItem(title: "桥接服务")
+        bridgeStatusValue = bridgeStatusItem.valueLabel
+        menu.addItem(bridgeStatusItem.item)
+
+        let shimStatusItem = makeStatusMenuItem(title: "ChatGPT Shim")
+        shimStatusValue = shimStatusItem.valueLabel
+        menu.addItem(shimStatusItem.item)
 
         menu.addItem(NSMenuItem.separator())
 
-        // Bridge controls
-        let restartItem = NSMenuItem(title: "重启桥接服务", action: #selector(restartBridge), keyEquivalent: "r")
-        restartItem.target = self
-        menu.addItem(restartItem)
+        let showItem = NSMenuItem(title: "打开 设置", action: #selector(showMainWindow), keyEquivalent: "")
+        showItem.target = self
+        menu.addItem(showItem)
 
-        let launchItem = NSMenuItem(title: "打开 ChatGPT Shim", action: #selector(launchChatGPT), keyEquivalent: "")
-        launchItem.target = self
-        menu.addItem(launchItem)
+        launchChatGPTItem = NSMenuItem(title: "打开 ChatGPT Shim…", action: #selector(launchChatGPT), keyEquivalent: "")
+        launchChatGPTItem.target = self
+        menu.addItem(launchChatGPTItem)
+
+        // Bridge controls
+        bridgeActionItem = NSMenuItem(title: "重启桥接服务", action: #selector(restartBridge), keyEquivalent: "r")
+        bridgeActionItem.target = self
+        menu.addItem(bridgeActionItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -109,6 +125,68 @@ final class XiaomiCodexRemoteAppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(quitItem)
 
         statusItem.menu = menu
+        updateStatusMenu()
+    }
+
+    private func makeStatusMenuItem(title: String) -> (item: NSMenuItem, valueLabel: NSTextField) {
+        let item = NSMenuItem()
+        let row = NSView(frame: NSRect(x: 0, y: 0, width: 250, height: 23))
+        let titleLabel = NSTextField(labelWithString: title)
+        let valueLabel = NSTextField(labelWithString: "")
+
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
+        valueLabel.textColor = .secondaryLabelColor
+        valueLabel.alignment = .right
+        row.addSubview(titleLabel)
+        row.addSubview(valueLabel)
+        NSLayoutConstraint.activate([
+            titleLabel.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 12),
+            titleLabel.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            valueLabel.leadingAnchor.constraint(greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: 16),
+            valueLabel.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -12),
+            valueLabel.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+        ])
+        item.view = row
+        item.isEnabled = false
+        item.title = title
+        return (item, valueLabel)
+    }
+
+    private func updateStatusMenu() {
+        remoteStatusValue.stringValue = appState.remoteConnected ? "已连接" : "未连接"
+
+        switch appState.bridge.state {
+        case .stopped:
+            bridgeStatusValue.stringValue = "未运行"
+            bridgeActionItem.title = "启动桥接服务"
+            bridgeActionItem.isEnabled = true
+        case .starting:
+            bridgeStatusValue.stringValue = "正在启动"
+            bridgeActionItem.title = "正在启动桥接服务…"
+            bridgeActionItem.isEnabled = false
+        case .running:
+            bridgeStatusValue.stringValue = "正常"
+            bridgeActionItem.title = "重启桥接服务"
+            bridgeActionItem.isEnabled = true
+        case .failed:
+            bridgeStatusValue.stringValue = "异常"
+            bridgeActionItem.title = "启动桥接服务"
+            bridgeActionItem.isEnabled = true
+        }
+
+        let shimConnected = appState.bridge.shimConnected
+        let compatibilityReady: Bool
+        if case .ready = appState.chatGPTLauncher.compatibilityState {
+            compatibilityReady = true
+        } else {
+            compatibilityReady = false
+        }
+        shimStatusValue.stringValue = shimConnected ? "已连接" : "未连接"
+        launchChatGPTItem.title = shimConnected ? "ChatGPT Shim 已连接" : "打开 ChatGPT Shim…"
+        launchChatGPTItem.isEnabled = appState.bridge.state == .running
+            && !shimConnected
+            && compatibilityReady
     }
 
     @objc private func statusBarClicked() {
@@ -116,7 +194,11 @@ final class XiaomiCodexRemoteAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func restartBridge() {
-        appState.bridge.restart()
+        if appState.bridge.state == .running {
+            appState.bridge.restart()
+        } else {
+            appState.bridge.start()
+        }
     }
 
     @objc private func launchChatGPT() {
@@ -155,6 +237,12 @@ final class XiaomiCodexRemoteAppDelegate: NSObject, NSApplicationDelegate {
 extension XiaomiCodexRemoteAppDelegate: NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         // Just hide, don't quit — keep running in menu bar
+    }
+}
+
+extension XiaomiCodexRemoteAppDelegate: NSMenuDelegate {
+    func menuWillOpen(_ menu: NSMenu) {
+        updateStatusMenu()
     }
 }
 
